@@ -4,6 +4,7 @@ plugins {
 
 ext {
     packageVariant = System.getenv("TERMUX_PACKAGE_VARIANT") ?: "apt-android-7"
+    markwonVersion = "4.6.2"
 }
 
 android {
@@ -93,15 +94,15 @@ android {
         }
     }
 
-    lintOptions {
+    lint {
         disable 'ProtectedPermissions'
-        abortOnError false
-        checkReleaseBuilds false
+        abortOnError = false
+        checkReleaseBuilds = false
     }
 
-    packagingOptions {
+    packaging {
         jniLibs {
-            useLegacyPackaging true
+            useLegacyPackaging = true
         }
     }
 
@@ -206,10 +207,12 @@ task downloadBootstraps() {
 
 afterEvaluate {
     android.applicationVariants.all { variant ->
-        variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
+        def bootstrapTask = tasks.named("downloadBootstraps")
+        variant.preBuildProvider.get().dependsOn(bootstrapTask)
+        variant.javaCompileProvider.get().dependsOn(bootstrapTask)
         variant.externalNativeBuildProviders.each { provider ->
             provider.configure { task ->
-                task.dependsOn(downloadBootstraps)
+                task.dependsOn(bootstrapTask)
             }
         }
     }
