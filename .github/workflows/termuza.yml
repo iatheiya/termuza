@@ -64,13 +64,22 @@ jobs:
       - name: Assemble Release APK
         run: ./gradlew clean assembleRelease --stacktrace --no-daemon
 
+      # ИСПРАВЛЕННЫЙ БЛОК ПОИСКА
       - name: Find release APK
         id: find_apk
         run: |
-          apk_path=$(find . -type f -path "*/build/outputs/apk/*/release/*.apk" ! -name "*-signed.apk" | head -n 1)
+          echo "Searching for APK in app/build/outputs/apk..."
+          # Ищем любой файл .apk внутри папки outputs, исключая уже подписанные (-signed)
+          apk_path=$(find app/build/outputs/apk -type f -name "*.apk" ! -name "*-signed.apk" | head -n 1)
+          
           if [ -z "$apk_path" ]; then
+            echo "Error: APK file not found!"
+            # Для отладки выведем содержимое папки, если файл не найден
+            ls -R app/build/outputs/apk/
             exit 1
           fi
+          
+          echo "Found APK at: $apk_path"
           echo "apk_path=$apk_path" >> $GITHUB_OUTPUT
 
       - name: Sign APK with apksigner
@@ -108,4 +117,3 @@ jobs:
         with:
           name: release-mappings
           path: '**/build/outputs/mapping/**/mapping.txt'
-          
