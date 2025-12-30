@@ -15,7 +15,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.termux.shared.termux.TermuxConstants;
 
-/** Basic embedded browser for viewing help pages. */
 public final class HelpActivity extends AppCompatActivity {
 
     WebView mWebView;
@@ -35,7 +34,9 @@ public final class HelpActivity extends AppCompatActivity {
         mWebView = new WebView(this);
         WebSettings settings = mWebView.getSettings();
         settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setAppCacheEnabled(false);
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        
         setContentView(progressLayout);
         mWebView.clearCache(true);
 
@@ -43,7 +44,6 @@ public final class HelpActivity extends AppCompatActivity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (url.equals(TermuxConstants.TERMUX_WIKI_URL) || url.startsWith(TermuxConstants.TERMUX_WIKI_URL + "/")) {
-                    // Inline help.
                     setContentView(progressLayout);
                     return false;
                 }
@@ -51,7 +51,6 @@ public final class HelpActivity extends AppCompatActivity {
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 } catch (ActivityNotFoundException e) {
-                    // Android TV does not have a system browser.
                     setContentView(progressLayout);
                     return false;
                 }
@@ -68,7 +67,7 @@ public final class HelpActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (mWebView.canGoBack()) {
+        if (mWebView != null && mWebView.canGoBack()) {
             mWebView.goBack();
         } else {
             super.onBackPressed();
