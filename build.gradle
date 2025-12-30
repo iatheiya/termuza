@@ -5,7 +5,6 @@ buildscript {
         gradlePluginPortal()
     }
     dependencies {
-        // ОБНОВЛЕНИЕ: Используем современный AGP 8.3.0
         classpath "com.android.tools.build:gradle:8.3.0"
     }
 }
