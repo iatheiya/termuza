@@ -5,15 +5,16 @@ android {
     namespace 'com.termux.view'
     compileSdk 34
 
-    dependencies {
-        implementation "androidx.annotation:annotation:1.7.0"
-        api project(":terminal-emulator")
-    }
-
     defaultConfig {
         minSdk 24
         targetSdk 34
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
     }
 
     buildTypes {
@@ -30,12 +31,9 @@ android {
 }
 
 dependencies {
+    implementation "androidx.annotation:annotation:1.7.0"
+    api project(":terminal-emulator")
     testImplementation "junit:junit:4.13.2"
-}
-
-task sourceJar(type: Jar) {
-    from android.sourceSets.getByName("main").java.srcDirs
-    archiveClassifier = "sources"
 }
 
 afterEvaluate {
@@ -46,7 +44,6 @@ afterEvaluate {
                 groupId = 'com.termux'
                 artifactId = 'terminal-view'
                 version = '0.118.0'
-                artifact(sourceJar)
             }
         }
     }
