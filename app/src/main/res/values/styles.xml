@@ -93,7 +93,7 @@
         <item name="android:tint">@color/colorOnPrimaryContainer</item>
     </style>
 
-    <style name="Widget.Termux.Card" parent="Widget.Material3.Card">
+    <style name="Widget.Termux.Card" parent="Widget.Material3.CardView.Elevated">
         <item name="shapeAppearance">@style/ShapeAppearance.Termux.LargeComponent</item>
         <item name="cardUseCompatPadding">true</item>
         <item name="cardPreventCornerOverlap">true</item>
