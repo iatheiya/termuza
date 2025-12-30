@@ -36,17 +36,6 @@ import io.noties.markwon.Markwon;
 import io.noties.markwon.recycler.MarkwonAdapter;
 import io.noties.markwon.recycler.SimpleEntry;
 
-/**
- * An activity to show reports in markdown format as per CommonMark spec based on config passed as {@link ReportInfo}.
- * Add Following to `AndroidManifest.xml` to use in an app:
- * {@code `<activity android:name="com.termux.shared.activities.ReportActivity" android:theme="@style/Theme.AppCompat.TermuxReportActivity" android:documentLaunchMode="intoExisting" />` }
- * and
- * {@code `<receiver android:name="com.termux.shared.activities.ReportActivity$ReportActivityBroadcastReceiver"  android:exported="false" />` }
- * Receiver **must not** be `exported="true"`!!!
- *
- * Also make an incremental call to {@link #deleteReportInfoFilesOlderThanXDays(Context, int, boolean)}
- * in the app to cleanup cached files.
- */
 public class ReportActivity extends AppCompatActivity {
 
     private static final String CLASS_NAME = ReportActivity.class.getCanonicalName();
@@ -60,7 +49,7 @@ public class ReportActivity extends AppCompatActivity {
 
     public static final int REQUEST_GRANT_STORAGE_PERMISSION_FOR_SAVE_FILE = 1000;
 
-    public static final int ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES = 1000 * 1024; // 1MB
+    public static final int ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES = 1000 * 1024;
 
     private ReportInfo mReportInfo;
     private String mReportInfoFilePath;
@@ -91,7 +80,6 @@ public class ReportActivity extends AppCompatActivity {
             mBundle = savedInstanceState;
 
         updateUI();
-
     }
 
     @Override
@@ -109,7 +97,6 @@ public class ReportActivity extends AppCompatActivity {
     }
 
     private void updateUI() {
-
         if (mBundle == null) {
             finish(); return;
         }
@@ -119,7 +106,6 @@ public class ReportActivity extends AppCompatActivity {
 
         if (mBundle.containsKey(EXTRA_REPORT_INFO_OBJECT_FILE_PATH)) {
             mReportInfoFilePath = mBundle.getString(EXTRA_REPORT_INFO_OBJECT_FILE_PATH);
-            Logger.logVerbose(LOG_TAG, ReportInfo.class.getSimpleName() + " serialized object will be read from file at path \"" + mReportInfoFilePath + "\"");
             if (mReportInfoFilePath != null) {
                 try {
                     FileUtils.ReadSerializableObjectResult result = FileUtils.readSerializableObjectFromFile(ReportInfo.class.getSimpleName(), mReportInfoFilePath, ReportInfo.class, false);
@@ -133,7 +119,6 @@ public class ReportActivity extends AppCompatActivity {
                     }
                 } catch (Exception e) {
                     Logger.logErrorAndShowToast(this, LOG_TAG, e.getMessage());
-                    Logger.logStackTraceWithMessage(LOG_TAG, "Failure while getting " + ReportInfo.class.getSimpleName() + " serialized object from file at path \"" + mReportInfoFilePath + "\"", e);
                 }
             }
         } else {
@@ -144,7 +129,6 @@ public class ReportActivity extends AppCompatActivity {
             finish(); return;
         }
 
-
         final ActionBar actionBar = getSupportActionBar();
         if (actionBar != null) {
             if (mReportInfo.reportTitle != null)
@@ -152,7 +136,6 @@ public class ReportActivity extends AppCompatActivity {
             else
                 actionBar.setTitle(TermuxConstants.TERMUX_APP_NAME + " App Report");
         }
-
 
         RecyclerView recyclerView = findViewById(R.id.recycler_view);
 
@@ -170,14 +153,15 @@ public class ReportActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged();
     }
 
-
     @Override
     public void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
-        if (mBundle.containsKey(EXTRA_REPORT_INFO_OBJECT_FILE_PATH)) {
-            outState.putString(EXTRA_REPORT_INFO_OBJECT_FILE_PATH, mReportInfoFilePath);
-        } else {
-            outState.putSerializable(EXTRA_REPORT_INFO_OBJECT, mReportInfo);
+        if (mBundle != null) {
+            if (mBundle.containsKey(EXTRA_REPORT_INFO_OBJECT_FILE_PATH)) {
+                outState.putString(EXTRA_REPORT_INFO_OBJECT_FILE_PATH, mReportInfoFilePath);
+            } else {
+                outState.putSerializable(EXTRA_REPORT_INFO_OBJECT, mReportInfo);
+            }
         }
     }
 
@@ -185,7 +169,6 @@ public class ReportActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         Logger.logVerbose(LOG_TAG, "onDestroy");
-
         deleteReportInfoFile(this, mReportInfoFilePath);
     }
 
@@ -194,7 +177,7 @@ public class ReportActivity extends AppCompatActivity {
         final MenuInflater inflater = getMenuInflater();
         inflater.inflate(R.menu.menu_report, menu);
 
-        if (mReportInfo.reportSaveFilePath == null) {
+        if (mReportInfo != null && mReportInfo.reportSaveFilePath == null) {
             MenuItem item = menu.findItem(R.id.menu_item_save_report_to_file);
             if (item != null)
                 item.setEnabled(false);
@@ -205,7 +188,7 @@ public class ReportActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        // Remove activity from recents menu on back button press
+        super.onBackPressed();
         finishAndRemoveTask();
     }
 
@@ -229,23 +212,15 @@ public class ReportActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-            Logger.logInfo(LOG_TAG, "Storage permission granted by user on request.");
             if (requestCode == REQUEST_GRANT_STORAGE_PERMISSION_FOR_SAVE_FILE) {
                 ShareUtils.saveTextToFile(this, mReportInfo.reportSaveFileLabel,
                     mReportInfo.reportSaveFilePath, ReportInfo.getReportInfoMarkdownString(mReportInfo),
                     true, -1);
             }
-        } else {
-            Logger.logInfo(LOG_TAG, "Storage permission denied by user on request.");
         }
     }
 
-    /**
-     * Generate the markdown {@link String} to be shown in {@link ReportActivity}.
-     */
     private void generateReportActivityMarkdownString() {
-        // We need to reduce chances of OutOfMemoryError happening so reduce new allocations and
-        // do not keep output of getReportInfoMarkdownString in memory
         StringBuilder reportString = new StringBuilder();
 
         if (mReportInfo.reportStringPrefix != null)
@@ -255,14 +230,12 @@ public class ReportActivity extends AppCompatActivity {
         int reportMarkdownStringSize = reportMarkdownString.getBytes().length;
         boolean truncated = false;
         if (reportMarkdownStringSize > ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES) {
-            Logger.logVerbose(LOG_TAG, mReportInfo.reportTitle + " report string size " + reportMarkdownStringSize + " is greater than " + ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES + " and will be truncated");
             reportString.append(DataUtils.getTruncatedCommandOutput(reportMarkdownString, ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES, true, false, true));
             truncated = true;
         } else {
             reportString.append(reportMarkdownString);
         }
 
-        // Free reference
         reportMarkdownString = null;
 
         if (mReportInfo.reportStringSuffix != null)
@@ -270,8 +243,6 @@ public class ReportActivity extends AppCompatActivity {
 
         int reportStringSize = reportString.length();
         if (reportStringSize > ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES) {
-            // This may break markdown formatting
-            Logger.logVerbose(LOG_TAG, mReportInfo.reportTitle + " report string total size " + reportStringSize + " is greater than " + ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES + " and will be truncated");
             mReportActivityMarkdownString = this.getString(R.string.msg_report_truncated) +
                 DataUtils.getTruncatedCommandOutput(reportString.toString(), ACTIVITY_TEXT_SIZE_LIMIT_IN_BYTES, true, false, false);
         } else if (truncated) {
@@ -279,19 +250,10 @@ public class ReportActivity extends AppCompatActivity {
         } else {
             mReportActivityMarkdownString = reportString.toString();
         }
-
     }
 
-
-
-
-
     public static class NewInstanceResult {
-        /** An intent that can be used to start the {@link ReportActivity}. */
         public Intent contentIntent;
-        /** An intent that can should be adding as the {@link android.app.Notification#deleteIntent}
-         * by a call to {@link android.app.PendingIntent#getBroadcast(Context, int, Intent, int)}
-         * so that {@link ReportActivityBroadcastReceiver} can do cleanup of {@link #EXTRA_REPORT_INFO_OBJECT_FILE_PATH}. */
         public Intent deleteIntent;
 
         NewInstanceResult(Intent contentIntent, Intent deleteIntent) {
@@ -300,42 +262,18 @@ public class ReportActivity extends AppCompatActivity {
         }
     }
 
-    /**
-     * Start the {@link ReportActivity}.
-     *
-     * @param context The {@link Context} for operations.
-     * @param reportInfo The {@link ReportInfo} containing info that needs to be displayed.
-     */
     public static void startReportActivity(@NonNull final Context context, @NonNull ReportInfo reportInfo) {
         NewInstanceResult result = newInstance(context, reportInfo);
         if (result.contentIntent == null) return;
         context.startActivity(result.contentIntent);
     }
 
-    /**
-     * Get content and delete intents for the {@link ReportActivity} that can be used to start it
-     * and do cleanup.
-     *
-     * If {@link ReportInfo} size is too large, then a TransactionTooLargeException will be thrown
-     * so its object may be saved to a file in the {@link Context#getCacheDir()}. Then when activity
-     * starts, its read back and the file is deleted in {@link #onDestroy()}.
-     * Note that files may still be left if {@link #onDestroy()} is not called or doesn't finish.
-     * A separate cleanup routine is implemented from that case by
-     * {@link #deleteReportInfoFilesOlderThanXDays(Context, int, boolean)} which should be called
-     * incrementally or at app startup.
-     *
-     * @param context The {@link Context} for operations.
-     * @param reportInfo The {@link ReportInfo} containing info that needs to be displayed.
-     * @return Returns {@link NewInstanceResult}.
-     */
     @NonNull
     public static NewInstanceResult newInstance(@NonNull final Context context, @NonNull final ReportInfo reportInfo) {
-
         long size = DataUtils.getSerializedSize(reportInfo);
         if (size > DataUtils.TRANSACTION_SIZE_LIMIT_IN_BYTES) {
             String reportInfoDirectoryPath = getReportInfoDirectoryPath(context);
             String reportInfoFilePath = reportInfoDirectoryPath + "/" + CACHE_FILE_BASENAME_PREFIX + reportInfo.reportTimestamp;
-            Logger.logVerbose(LOG_TAG, reportInfo.reportTitle + " " + ReportInfo.class.getSimpleName() + " serialized object size " + size + " is greater than " + DataUtils.TRANSACTION_SIZE_LIMIT_IN_BYTES + " and it will be written to file at path \"" + reportInfoFilePath + "\"");
             Error error = FileUtils.writeSerializableObjectToFile(ReportInfo.class.getSimpleName(), reportInfoFilePath, reportInfo);
             if (error != null) {
                 Logger.logErrorExtended(LOG_TAG, error.toString());
@@ -362,14 +300,9 @@ public class ReportActivity extends AppCompatActivity {
         }
 
         intent.putExtras(bundle);
-
-        // Note that ReportActivity should have `documentLaunchMode="intoExisting"` set in `AndroidManifest.xml`
-        // which has equivalent behaviour to FLAG_ACTIVITY_NEW_DOCUMENT.
-        // FLAG_ACTIVITY_SINGLE_TOP must also be passed for onNewIntent to be called.
         intent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NEW_DOCUMENT);
         return intent;
     }
-
 
     private static Intent createDeleteIntent(@NonNull final Context context, final String reportInfoFilePath) {
         if (reportInfoFilePath == null) return null;
@@ -384,85 +317,46 @@ public class ReportActivity extends AppCompatActivity {
         return intent;
     }
 
-
-
-
-
     @NotNull
     private static String getReportInfoDirectoryPath(Context context) {
-        // Canonicalize to solve /data/data and /data/user/0 issues when comparing with reportInfoFilePath
         return FileUtils.getCanonicalPath(context.getCacheDir().getAbsolutePath(), null) + "/" + CACHE_DIR_BASENAME;
     }
 
     private static void deleteReportInfoFile(Context context, String reportInfoFilePath) {
         if (context == null || reportInfoFilePath == null) return;
 
-        // Extra protection for mainly if someone set `exported="true"` for ReportActivityBroadcastReceiver
         String reportInfoDirectoryPath = getReportInfoDirectoryPath(context);
         reportInfoFilePath = FileUtils.getCanonicalPath(reportInfoFilePath, null);
         if(!reportInfoFilePath.equals(reportInfoDirectoryPath) && reportInfoFilePath.startsWith(reportInfoDirectoryPath + "/")) {
-            Logger.logVerbose(LOG_TAG, "Deleting " + ReportInfo.class.getSimpleName() + " serialized object file at path \"" + reportInfoFilePath + "\"");
             Error error = FileUtils.deleteRegularFile(ReportInfo.class.getSimpleName(), reportInfoFilePath, true);
             if (error != null) {
                 Logger.logErrorExtended(LOG_TAG, error.toString());
             }
-        } else {
-            Logger.logError(LOG_TAG, "Not deleting " + ReportInfo.class.getSimpleName() + " serialized object file at path \"" + reportInfoFilePath + "\" since its not under \"" + reportInfoDirectoryPath + "\"");
         }
     }
 
-    /**
-     * Delete {@link ReportInfo} serialized object files from cache older than x days. If a notification
-     * has still not been opened after x days that's using a PendingIntent to ReportActivity, then
-     * opening the notification will throw a file not found error, so choose days value appropriately
-     * or check if a notification is still active if tracking notification ids.
-     * The {@link Context} object passed must be of the same package with which {@link #newInstance(Context, ReportInfo)}
-     * was called since a call to {@link Context#getCacheDir()} is made.
-     *
-     * @param context The {@link Context} for operations.
-     * @param days The x amount of days before which files should be deleted. This must be `>=0`.
-     * @param isSynchronous If set to {@code true}, then the command will be executed in the
-     *                      caller thread and results returned synchronously.
-     *                      If set to {@code false}, then a new thread is started run the commands
-     *                      asynchronously in the background and control is returned to the caller thread.
-     * @return Returns the {@code error} if deleting was not successful, otherwise {@code null}.
-     */
     public static Error deleteReportInfoFilesOlderThanXDays(@NonNull final Context context, int days, final boolean isSynchronous) {
         if (isSynchronous) {
             return deleteReportInfoFilesOlderThanXDaysInner(context, days);
         } else {
             new Thread() { public void run() {
-                Error error = deleteReportInfoFilesOlderThanXDaysInner(context, days);
-                if (error != null) {
-                    Logger.logErrorExtended(LOG_TAG, error.toString());
-                }
+                deleteReportInfoFilesOlderThanXDaysInner(context, days);
             }}.start();
             return null;
         }
     }
 
     private static Error deleteReportInfoFilesOlderThanXDaysInner(@NonNull final Context context, int days) {
-        // Only regular files are deleted and subdirectories are not checked
         String reportInfoDirectoryPath = getReportInfoDirectoryPath(context);
-        Logger.logVerbose(LOG_TAG, "Deleting " + ReportInfo.class.getSimpleName() + " serialized object files under directory path \"" + reportInfoDirectoryPath + "\" older than " + days + " days");
         return FileUtils.deleteFilesOlderThanXDays(ReportInfo.class.getSimpleName(), reportInfoDirectoryPath, null, days, true, FileType.REGULAR.getValue());
     }
 
-
-    /**
-     * The {@link BroadcastReceiver} for {@link ReportActivity} that currently does cleanup when
-     * {@link android.app.Notification#deleteIntent} is called. It must be registered in `AndroidManifest.xml`.
-     */
     public static class ReportActivityBroadcastReceiver extends BroadcastReceiver {
-        private static final String LOG_TAG = "ReportActivityBroadcastReceiver";
-
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent == null) return;
 
             String action = intent.getAction();
-            Logger.logVerbose(LOG_TAG, "onReceive: \"" + action + "\" action");
-
             if (ACTION_DELETE_REPORT_INFO_OBJECT_FILE.equals(action)) {
                 Bundle bundle = intent.getExtras();
                 if (bundle == null) return;
@@ -472,5 +366,4 @@ public class ReportActivity extends AppCompatActivity {
             }
         }
     }
-
 }
