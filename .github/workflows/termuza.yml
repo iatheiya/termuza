@@ -227,7 +227,9 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+          export ANDROID_AVD_HOME="$GITHUB_WORKSPACE/.android/avd"
           mkdir -p "$ANDROID_HOME"
+          mkdir -p "$ANDROID_AVD_HOME"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/tools/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
           SDKMANAGER_PATH="$(command -v sdkmanager || true)"
           if [ -z "$SDKMANAGER_PATH" ]; then
@@ -281,9 +283,10 @@ jobs:
             echo "AVDMANAGER_NOT_FOUND" > "$GITHUB_WORKSPACE/emulator_logs/boot_error.txt"
             exit 0
           fi
+          echo yes | "$AVDMANAGER_PATH" delete avd -n "${AVD_NAME}" || true
           echo no | "$AVDMANAGER_PATH" create avd -n "${AVD_NAME}" -k "system-images;android-${API_LEVEL};${ANDROID_TARGET};${ANDROID_ARCH}" --device "pixel" --force || true
           sleep 10
-          CONFIG_DIR="$HOME/.android/avd/${AVD_NAME}.avd"
+          CONFIG_DIR="$ANDROID_AVD_HOME/${AVD_NAME}.avd"
           mkdir -p "$CONFIG_DIR"
           printf "hw.ramSize=1536\nvm.heapSize=384\nhw.lcd.density=160\nhw.lcd.height=800\nhw.lcd.width=480\nsnapshot.present=false\nimage.sysdir.1=system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}/\n" > "$CONFIG_DIR/config.ini"
       - name: run-emulator-and-test
@@ -292,7 +295,7 @@ jobs:
         run: |
           set -euo pipefail
           export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
-          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          export ANDROID_AVD_HOME="$GITHUB_WORKSPACE/.android/avd"
           PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS_VERSION}:$PATH"
           APK="${{ steps.locate_apk.outputs.apk_path }}"
           LOGDIR="$GITHUB_WORKSPACE/emulator_logs"
