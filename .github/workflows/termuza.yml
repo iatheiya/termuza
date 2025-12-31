@@ -15,7 +15,7 @@ env:
   JAVA_VERSION: '17'
   API_LEVEL: '30'
   ANDROID_TARGET: 'aosp_atd'
-  ANDROID_ARCH: 'x86_64'
+  ANDROID_ARCH: 'x86'
   AVD_NAME: 'ci_optimized'
   EMU_BOOT_TIMEOUT_SEC: '900'
   EMU_WAIT_FOR_DEVICE_SEC: '900'
@@ -318,7 +318,7 @@ jobs:
           echo no | "$AVDMANAGER_PATH" create avd -n "${AVD_NAME}" -k "system-images;android-${API_LEVEL};${ANDROID_TARGET};${ANDROID_ARCH}" --device "pixel" --force || true
           CONFIG_DIR="$HOME/.android/avd/${AVD_NAME}.avd"
           mkdir -p "$CONFIG_DIR"
-          printf "hw.ramSize=2048\nvm.heapSize=512\nhw.lcd.density=160\nhw.lcd.height=800\nhw.lcd.width=480\nsnapshot.present=false\nimage.sysdir.1=system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}/\n" > "$CONFIG_DIR/config.ini"
+          printf "hw.ramSize=1024\nvm.heapSize=256\nhw.lcd.density=160\nhw.lcd.height=800\nhw.lcd.width=480\nsnapshot.present=false\nimage.sysdir.1=system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}/\n" > "$CONFIG_DIR/config.ini"
       - name: run-emulator-and-test
         if: env.apk_exists == 'true'
         continue-on-error: true
@@ -335,20 +335,36 @@ jobs:
           LAUNCH_LOG="$LOGDIR/launch_log.txt"
           LOGCAT="$LOGDIR/full_logcat.txt"
           MEMLOG="$LOGDIR/memory_monitor.txt"
+          DMESG_LOG="$LOGDIR/dmesg.txt"
+          PS_BEFORE="$LOGDIR/ps_before.txt"
+          FREE_BEFORE="$LOGDIR/free_before.txt"
+          PROC_MEMINFO="$LOGDIR/proc_meminfo.txt"
           if [ -f diagnostics_out/kvm.txt ]; then
             KVM_FLAG_CONTENT="$(cat diagnostics_out/kvm.txt | tr -d '\r\n' || true)"
           else
             KVM_FLAG_CONTENT="kvm_available=false"
           fi
+          SWAP_CREATED=0
+          if ! swapon --show | grep -q "^/swapfile"; then
+            if sudo sh -c 'fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile'; then
+              SWAP_CREATED=1
+            else
+              SWAP_CREATED=0
+            fi
+          fi
+          ( while true; do date; free -m; sleep 60; done ) > "$MEMLOG" 2>&1 &
+          MEM_PID=$!
+          ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head -n 30 > "$PS_BEFORE" 2>/dev/null || true
+          free -m > "$FREE_BEFORE" 2>/dev/null || true
+          cat /proc/meminfo > "$PROC_MEMINFO" 2>/dev/null || true
           ACCEL_FLAG="-accel off"
           if [ -r /dev/kvm ] || [ "$KVM_FLAG_CONTENT" = "kvm_available=true" ]; then
             ACCEL_FLAG="-accel on"
             sudo chmod 666 /dev/kvm || true
           fi
-          adb start-server || true
-          (while true; do date; free -h; ps aux --sort=-%mem | head -n 10; sleep 60; done) > "$MEMLOG" 2>&1 &
-          MEM_PID=$!
-          EMU_CMD=(emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect $ACCEL_FLAG -no-snapshot -no-snapshot-save -camera-back none -cache-size 1024)
+          EMU_MEM_MB=1024
+          EMU_CACHE_SIZE=512
+          EMU_CMD=(emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect $ACCEL_FLAG -no-snapshot -no-snapshot-save -camera-back none -memory ${EMU_MEM_MB} -cache-size ${EMU_CACHE_SIZE})
           if command -v setsid >/dev/null 2>&1; then
             setsid "${EMU_CMD[@]}" >"$EMU_STDOUT" 2>"$EMU_STDERR" < /dev/null &
             EMU_PID=$!
@@ -367,6 +383,10 @@ jobs:
             if [ -n "${MEM_PID:-}" ] && kill -0 "${MEM_PID}" 2>/dev/null; then
               kill -9 "${MEM_PID}" 2>/dev/null || true
             fi
+            if [ "$SWAP_CREATED" -eq 1 ]; then
+              sudo swapoff /swapfile || true
+              sudo rm -f /swapfile || true
+            fi
           }
           trap 'cleanup' EXIT
           START_TS=$(date +%s)
@@ -374,6 +394,9 @@ jobs:
           TIMEOUT=${EMU_BOOT_TIMEOUT_SEC}
           EARLY_TIMEOUT=300
           EARLY_END=$((START_TS + EARLY_TIMEOUT))
+          DMESG_PID=""
+          ( while true; do sudo dmesg -T | tail -n 200 > "$DMESG_LOG" 2>&1 || true; sleep 30; done ) &
+          DMESG_PID=$!
           while [ $(( $(date +%s) - START_TS )) -lt $TIMEOUT ]; do
             adb devices -l > "$LOGDIR/adb_devices.txt" 2>&1 || true
             SERIAL=$(awk '/emulator-/{print $1; exit}' "$LOGDIR/adb_devices.txt" || true)
@@ -385,15 +408,20 @@ jobs:
               fi
             fi
             if ! kill -0 $EMU_PID 2>/dev/null; then
+              sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
               echo "PROCESS_DIED" > "$LOGDIR/boot_error.txt"
               break
             fi
             if [ $(date +%s) -gt $EARLY_END ] && [ -z "$SERIAL" ]; then
+              sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
               echo "NO_SERIAL_AFTER_EARLY_TIMEOUT" > "$LOGDIR/boot_error.txt"
               break
             fi
             sleep 5
           done
+          if [ -n "$DMESG_PID" ] && kill -0 "$DMESG_PID" 2>/dev/null; then
+            kill "$DMESG_PID" 2>/dev/null || true
+          fi
           if [ -z "$FOUND_SERIAL" ]; then
             adb devices -l > "$LOGDIR/adb_devices_final.txt" 2>&1 || true
             if [ ! -f "$LOGDIR/boot_error.txt" ]; then
@@ -416,6 +444,7 @@ jobs:
           done
           if [ $BOOT_OK -ne 1 ]; then
             adb -s "$FOUND_SERIAL" logcat -d > "$LOGDIR/logcat_preboot.txt" || true
+            sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
             echo "EMULATOR_BOOT_TIMEOUT" > "$LOGDIR/boot_error.txt"
             adb -s "$FOUND_SERIAL" emu kill || true
             cleanup
