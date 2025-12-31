@@ -246,7 +246,7 @@ jobs:
           avd-name: ${{ env.AVD_NAME }}
           force-avd-creation: true
           disable-linux-hw-accel: false
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel kvm -no-snapshot-save
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-metrics
           emulator-boot-timeout: ${{ env.EMU_BOOT_TIMEOUT_SEC }}
           script: |
             set -euxo pipefail
