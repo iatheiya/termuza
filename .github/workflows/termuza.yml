@@ -1,4 +1,4 @@
-name: termuza-deep-scan
+name: termuza
 
 on:
   push:
@@ -12,7 +12,7 @@ env:
   JAVA_VERSION: '17'
   AVD_NAME: 'ci_avd'
   API_LEVEL: '34'
-  EMU_BOOT_TIMEOUT_SEC: '600'
+  EMU_BOOT_TIMEOUT_SEC: '900'
   ANDROID_ARCH: 'x86_64'
   ANDROID_TARGET: 'google_apis'
 
@@ -50,7 +50,6 @@ jobs:
       - name: collect-diagnostics-logs
         if: always()
         run: |
-          RUNID=${{ github.run_id }}
           mkdir -p diagnostics_out
           mv diagnostics-*.txt diagnostics_out/ 2>/dev/null || true
           if [ -d "app/build/reports" ]; then cp -r app/build/reports diagnostics_out/reports; fi
@@ -169,57 +168,71 @@ jobs:
           LOGDIR="emulator_logs"
           mkdir -p "$LOGDIR"
           
-          emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > "$LOGDIR/emu_stdout.txt" 2> "$LOGDIR/emu_stderr.txt" &
+          sudo chmod 666 /dev/kvm || true
+          
+          adb kill-server
+          adb start-server
+          
+          stdbuf -oL emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-snapshot-load > "$LOGDIR/emu_stdout.txt" 2> "$LOGDIR/emu_stderr.txt" &
           EMU_PID=$!
           
-          echo "Waiting for emulator boot..."
           START_TIME=$(date +%s)
-          BOOT_COMPLETED=0
-          while [ $(( $(date +%s) - START_TIME )) -lt ${{ env.EMU_BOOT_TIMEOUT_SEC }} ]; do
-            STATUS=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+          
+          while true; do
+            CURRENT_TIME=$(date +%s)
+            ELAPSED=$(( CURRENT_TIME - START_TIME ))
+            
+            STATUS=$(timeout 5s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            
             if [ "$STATUS" = "1" ]; then
-              BOOT_COMPLETED=1
+              echo "SUCCESS: Emulator ONLINE after ${ELAPSED}s"
               break
             fi
+            
+            if [ $ELAPSED -ge ${{ env.EMU_BOOT_TIMEOUT_SEC }} ]; then
+              echo "CRITICAL: Boot Timeout. Killing emulator."
+              echo "TIMEOUT" > "$LOGDIR/boot_error.txt"
+              break
+            fi
+            
+            if ! kill -0 $EMU_PID 2>/dev/null; then
+              echo "ERROR: Emulator process died."
+              break
+            fi
+            
+            if (( ELAPSED % 20 == 0 )); then
+              echo "PROGRESS: Booting... ${ELAPSED}s. ADB Status: [${STATUS:-waiting}]"
+              adb devices 2>/dev/null || true
+            fi
+            
             sleep 5
           done
           
-          if [ "$BOOT_COMPLETED" -eq 0 ]; then
-             echo "TIMEOUT_BOOT" > "$LOGDIR/boot_failure.txt"
-             adb logcat -d > "$LOGDIR/logcat_boot_fail.txt" 2>&1
-             kill -9 $EMU_PID
-             exit 0
-          fi
-          
-          adb devices -l > "$LOGDIR/devices.txt"
-          adb install -r "$APK" > "$LOGDIR/install.txt" 2>&1
-          
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | tail -n 1)
-          AAPT="$BUILD_TOOLS/aapt"
-          PKG=$($AAPT dump badging "$APK" | grep "package: name=" | awk -F"'" '{print $2}')
-          ACT=$($AAPT dump badging "$APK" | grep "launchable-activity: name=" | awk -F"'" '{print $2}')
-          
-          echo "PKG=$PKG" > "$LOGDIR/pkg_info.txt"
-          echo "ACT=$ACT" >> "$LOGDIR/pkg_info.txt"
-          
-          adb logcat -c
-          
-          if [ -n "$PKG" ] && [ -n "$ACT" ]; then
-            adb shell am start -n "$PKG/$ACT"
-            sleep 20
-          elif [ -n "$PKG" ]; then
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
-            sleep 20
+          if [ -f "$LOGDIR/boot_error.txt" ] || ! kill -0 $EMU_PID 2>/dev/null; then
+             adb logcat -d > "$LOGDIR/logcat_boot_fail.txt" 2>&1 || true
+             kill -9 $EMU_PID 2>/dev/null || true
           else
-            echo "CANNOT_DETERMINE_LAUNCH" > "$LOGDIR/launch_error.txt"
+             echo "Installing APK..."
+             timeout 120s adb install -r "$APK" > "$LOGDIR/install_log.txt" 2>&1
+             
+             BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -n 1)
+             AAPT="$BUILD_TOOLS/aapt"
+             
+             PKG=$($AAPT dump badging "$APK" | grep "package: name=" | awk -F"'" '{print $2}')
+             ACT=$($AAPT dump badging "$APK" | grep "launchable-activity: name=" | awk -F"'" '{print $2}')
+             
+             if [ -n "$PKG" ]; then
+               echo "Launching $PKG/$ACT"
+               adb shell am start -n "$PKG/$ACT" || adb shell monkey -p "$PKG" 1
+               sleep 30
+               adb logcat -d > "$LOGDIR/full_logcat.txt"
+               grep -E "FATAL|AndroidRuntime|Exception|Caused by" "$LOGDIR/full_logcat.txt" > "$LOGDIR/runtime_crashes.txt" || true
+             else
+               echo "Parse Error: Could not find package name" > "$LOGDIR/parse_error.txt"
+             fi
+             
+             adb emu kill || kill -9 $EMU_PID 2>/dev/null || true
           fi
-          
-          adb logcat -d > "$LOGDIR/full_logcat.txt"
-          adb shell dumpsys package "$PKG" > "$LOGDIR/dumpsys.txt" 2>/dev/null || true
-          
-          grep -E "FATAL|AndroidRuntime|Exception|Caused by|ANR" "$LOGDIR/full_logcat.txt" > "$LOGDIR/runtime_crashes.txt" || true
-          
-          adb emu kill || kill -9 $EMU_PID
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -242,12 +255,14 @@ jobs:
           OUT="FULL_STRICT_REPORT.txt"
           touch "$OUT"
           echo "=== DEEP SCAN REPORT ===" >> "$OUT"
+          echo "Run ID: ${{ github.run_id }}" >> "$OUT"
           echo "Generated at: $(date)" >> "$OUT"
           echo "========================" >> "$OUT"
           
           echo "" >> "$OUT"
           echo "[SECTION 1: RUNTIME CRASHES]" >> "$OUT"
-          find artifacts -name "runtime_crashes.txt" -type f -exec cat {} + >> "$OUT" || echo "No runtime crashes detected or log missing." >> "$OUT"
+          find artifacts -name "runtime_crashes.txt" -type f -exec cat {} + >> "$OUT" || echo "No runtime crashes detected." >> "$OUT"
+          find artifacts -name "boot_error.txt" -type f -exec echo "EMULATOR BOOT FAILED" \; >> "$OUT" || true
           
           echo "" >> "$OUT"
           echo "[SECTION 2: BUILD FAILURES]" >> "$OUT"
@@ -270,8 +285,8 @@ jobs:
           find artifacts -name "manifest_analysis.txt" -type f -exec cat {} + >> "$OUT" || true
 
           echo "" >> "$OUT"
-          echo "[SECTION 7: DETAILED LOGS HEADERS]" >> "$OUT"
-          find artifacts -name "*.txt" -print0 | xargs -0 grep -H -E "FATAL|Exception" | head -n 200 >> "$OUT" || true
+          echo "[SECTION 7: EMULATOR STDERR]" >> "$OUT"
+          find artifacts -name "emu_stderr.txt" -type f -exec cat {} + | head -n 50 >> "$OUT" || true
           
       - uses: actions/upload-artifact@v4
         with:
