@@ -294,6 +294,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
+          sudo chown $USER:$USER /dev/kvm || true
           export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
           export ANDROID_AVD_HOME="$GITHUB_WORKSPACE/.android/avd"
           PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS_VERSION}:$PATH"
@@ -308,10 +309,10 @@ jobs:
           LOGCAT="$LOGDIR/full_logcat.txt"
           MEMLOG="$LOGDIR/memory_monitor.txt"
           PS_BEFORE="$LOGDIR/ps_before.txt"
-          ACCEL_FLAG="-accel on"
+          ACCEL_FLAG="-accel kvm"
           EMU_MEM_MB=1536
           EMU_CACHE_SIZE=512
-          EMU_CMD=(emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu guest $ACCEL_FLAG -no-snapshot -no-snapshot-save -camera-back none -memory ${EMU_MEM_MB} -cache-size ${EMU_CACHE_SIZE})
+          EMU_CMD=(emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect $ACCEL_FLAG -no-snapshot -no-snapshot-save -camera-back none -memory ${EMU_MEM_MB} -cache-size ${EMU_CACHE_SIZE})
           nohup "${EMU_CMD[@]}" >"$EMU_STDOUT" 2>"$EMU_STDERR" &
           EMU_PID=$!
           tail -f "$EMU_STDOUT" &
