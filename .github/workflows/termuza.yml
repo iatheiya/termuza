@@ -342,4 +342,3 @@ jobs:
         with:
           name: FINAL_REPORT
           path: FULL_STRICT_REPORT.txt
-```0
