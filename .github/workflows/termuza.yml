@@ -166,7 +166,7 @@ jobs:
 
   emulator:
     name: emulator
-    runs-on: ubuntu-latest
+    runs-on: macos-13
     needs: build
     if: always()
     timeout-minutes: 150
@@ -226,23 +226,8 @@ jobs:
         if: env.apk_exists == 'true'
         run: |
           set -euo pipefail
-          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
+          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
           mkdir -p "$ANDROID_HOME"
-          AVAILABLE_KB=$(df --output=avail -k "$HOME" | tail -n1 || echo 0)
-          if [ "$AVAILABLE_KB" -lt "${MIN_FREE_KB}" ]; then
-            if [ -d /usr/local/lib/android ]; then
-              sudo rm -rf /usr/local/lib/android || true
-            fi
-            if [ -d /usr/share/dotnet ]; then
-              sudo rm -rf /usr/share/dotnet || true
-            fi
-            AVAILABLE_KB=$(df --output=avail -k "$HOME" | tail -n1 || echo 0)
-            if [ "$AVAILABLE_KB" -lt "${MIN_FREE_KB}" ]; then
-              mkdir -p "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}"
-              echo "NO_SPACE_AVAILABLE" > "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}/boot_error.txt"
-              exit 0
-            fi
-          fi
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/tools/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$PATH"
           SDKMANAGER_PATH="$(command -v sdkmanager || true)"
           if [ -z "$SDKMANAGER_PATH" ]; then
@@ -254,27 +239,8 @@ jobs:
             fi
           fi
           if [ -z "$SDKMANAGER_PATH" ]; then
-            TMPDIR=$(mktemp -d)
-            curl -fSL "https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip" -o "$TMPDIR/cmdline.zip" || true
-            if [ -f "$TMPDIR/cmdline.zip" ]; then
-              mkdir -p "$ANDROID_HOME/cmdline-tools/latest"
-              unzip -q "$TMPDIR/cmdline.zip" -d "$TMPDIR" || true
-              if [ -d "$TMPDIR/cmdline-tools" ]; then
-                mv "$TMPDIR/cmdline-tools"/* "$ANDROID_HOME/cmdline-tools/latest/" || true
-              else
-                mv "$TMPDIR"/* "$ANDROID_HOME/cmdline-tools/latest/" 2>/dev/null || true
-              fi
-              rm -rf "$TMPDIR" || true
-            fi
-            export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-            SDKMANAGER_PATH="$(command -v sdkmanager || true)"
-            if [ -z "$SDKMANAGER_PATH" ]; then
-              SDKMANAGER_PATH="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit || true)"
-            fi
-          fi
-          if [ -z "$SDKMANAGER_PATH" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}"
-            echo "SDKMANAGER_NOT_FOUND" > "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}/boot_error.txt"
+            mkdir -p "$GITHUB_WORKSPACE/emulator_logs"
+            echo "SDKMANAGER_NOT_FOUND" > "$GITHUB_WORKSPACE/emulator_logs/boot_error.txt"
             exit 0
           fi
           SDKMANAGER_DIR=$(dirname "$SDKMANAGER_PATH")
@@ -297,8 +263,8 @@ jobs:
             yes | "$SDKMANAGER_PATH" --sdk_root="$ANDROID_HOME" --licenses || true
           done
           if [ ! -d "$ANDROID_HOME/system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}"
-            echo "SDKMANAGER_INSTALL_FAILED" > "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}/boot_error.txt"
+            mkdir -p "$GITHUB_WORKSPACE/emulator_logs"
+            echo "SDKMANAGER_INSTALL_FAILED" > "$GITHUB_WORKSPACE/emulator_logs/boot_error.txt"
             exit 0
           fi
           AVDMANAGER_PATH="$(command -v avdmanager || true)"
@@ -311,82 +277,54 @@ jobs:
             fi
           fi
           if [ -z "$AVDMANAGER_PATH" ]; then
-            mkdir -p "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}"
-            echo "AVDMANAGER_NOT_FOUND" > "$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}/boot_error.txt"
+            mkdir -p "$GITHUB_WORKSPACE/emulator_logs"
+            echo "AVDMANAGER_NOT_FOUND" > "$GITHUB_WORKSPACE/emulator_logs/boot_error.txt"
             exit 0
           fi
           echo no | "$AVDMANAGER_PATH" create avd -n "${AVD_NAME}" -k "system-images;android-${API_LEVEL};${ANDROID_TARGET};${ANDROID_ARCH}" --device "pixel" --force || true
           CONFIG_DIR="$HOME/.android/avd/${AVD_NAME}.avd"
           mkdir -p "$CONFIG_DIR"
-          printf "hw.ramSize=1024\nvm.heapSize=256\nhw.lcd.density=160\nhw.lcd.height=800\nhw.lcd.width=480\nsnapshot.present=false\nimage.sysdir.1=system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}/\n" > "$CONFIG_DIR/config.ini"
+          printf "hw.ramSize=1536\nvm.heapSize=384\nhw.lcd.density=160\nhw.lcd.height=800\nhw.lcd.width=480\nsnapshot.present=false\nimage.sysdir.1=system-images/android-${API_LEVEL}/${ANDROID_TARGET}/${ANDROID_ARCH}/\n" > "$CONFIG_DIR/config.ini"
       - name: run-emulator-and-test
         if: env.apk_exists == 'true'
         continue-on-error: true
         run: |
           set -euo pipefail
-          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
+          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
           PATH="$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS_VERSION}:$PATH"
           APK="${{ steps.locate_apk.outputs.apk_path }}"
-          LOGDIR="$GITHUB_WORKSPACE/emulator_logs_${{ github.run_id }}"
+          LOGDIR="$GITHUB_WORKSPACE/emulator_logs"
           mkdir -p "$LOGDIR"
           EMU_STDOUT="$LOGDIR/emu_stdout.txt"
           EMU_STDERR="$LOGDIR/emu_stderr.txt"
+          touch "$EMU_STDOUT" "$EMU_STDERR"
           INSTALL_LOG="$LOGDIR/install_log.txt"
           LAUNCH_LOG="$LOGDIR/launch_log.txt"
           LOGCAT="$LOGDIR/full_logcat.txt"
           MEMLOG="$LOGDIR/memory_monitor.txt"
-          DMESG_LOG="$LOGDIR/dmesg.txt"
           PS_BEFORE="$LOGDIR/ps_before.txt"
-          FREE_BEFORE="$LOGDIR/free_before.txt"
-          PROC_MEMINFO="$LOGDIR/proc_meminfo.txt"
-          if [ -f diagnostics_out/kvm.txt ]; then
-            KVM_FLAG_CONTENT="$(cat diagnostics_out/kvm.txt | tr -d '\r\n' || true)"
-          else
-            KVM_FLAG_CONTENT="kvm_available=false"
-          fi
-          SWAP_CREATED=0
-          if ! swapon --show | grep -q "^/swapfile"; then
-            if sudo sh -c 'fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && sysctl -w vm.swappiness=100'; then
-              SWAP_CREATED=1
-            else
-              SWAP_CREATED=0
-            fi
-          fi
-          ( while true; do date; free -m; sleep 60; done ) > "$MEMLOG" 2>&1 &
-          MEM_PID=$!
-          ps -eo pid,ppid,cmd,%mem,%cpu --sort=-%mem | head -n 30 > "$PS_BEFORE" 2>/dev/null || true
-          free -m > "$FREE_BEFORE" 2>/dev/null || true
-          cat /proc/meminfo > "$PROC_MEMINFO" 2>/dev/null || true
-          ACCEL_FLAG="-accel off"
-          if [ -r /dev/kvm ] || [ "$KVM_FLAG_CONTENT" = "kvm_available=true" ]; then
-            ACCEL_FLAG="-accel on"
-            sudo chmod 666 /dev/kvm || true
-          fi
-          EMU_MEM_MB=1024
+          ACCEL_FLAG="-accel on"
+          EMU_MEM_MB=1536
           EMU_CACHE_SIZE=512
           EMU_CMD=(emulator -avd "${AVD_NAME}" -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect $ACCEL_FLAG -no-snapshot -no-snapshot-save -camera-back none -memory ${EMU_MEM_MB} -cache-size ${EMU_CACHE_SIZE})
-          if command -v setsid >/dev/null 2>&1; then
-            setsid "${EMU_CMD[@]}" >"$EMU_STDOUT" 2>"$EMU_STDERR" < /dev/null &
-            EMU_PID=$!
-            EMU_PGID=$(ps -o pgid= "$EMU_PID" | tr -d ' ' || echo "$EMU_PID")
-          else
-            nohup "${EMU_CMD[@]}" >"$EMU_STDOUT" 2>"$EMU_STDERR" &
-            EMU_PID=$!
-            EMU_PGID=$(ps -o pgid= "$EMU_PID" | tr -d ' ' || echo "$EMU_PID")
-          fi
+          nohup "${EMU_CMD[@]}" >"$EMU_STDOUT" 2>"$EMU_STDERR" &
+          EMU_PID=$!
+          tail -f "$EMU_STDOUT" &
+          TAIL_PID_1=$!
+          tail -f "$EMU_STDERR" &
+          TAIL_PID_2=$!
+          ( while true; do date; ps -o pid,rss,command -p $EMU_PID; sleep 60; done ) > "$MEMLOG" 2>&1 &
+          MEM_PID=$!
+          ps -A -o pid,ppid,mem,cpu,command | head -n 30 > "$PS_BEFORE" 2>/dev/null || true
           cleanup() {
-            if [ -n "${EMU_PGID:-}" ] && kill -0 "${EMU_PGID}" 2>/dev/null; then
-              kill -TERM -"${EMU_PGID}" 2>/dev/null || true
-            elif [ -n "${EMU_PID:-}" ] && kill -0 "${EMU_PID}" 2>/dev/null; then
+            if [ -n "${EMU_PID:-}" ] && kill -0 "${EMU_PID}" 2>/dev/null; then
               kill -TERM "${EMU_PID}" 2>/dev/null || true
             fi
             if [ -n "${MEM_PID:-}" ] && kill -0 "${MEM_PID}" 2>/dev/null; then
               kill -9 "${MEM_PID}" 2>/dev/null || true
             fi
-            if [ "$SWAP_CREATED" -eq 1 ]; then
-              sudo swapoff /swapfile || true
-              sudo rm -f /swapfile || true
-            fi
+            if [ -n "${TAIL_PID_1:-}" ]; then kill "${TAIL_PID_1}" 2>/dev/null || true; fi
+            if [ -n "${TAIL_PID_2:-}" ]; then kill "${TAIL_PID_2}" 2>/dev/null || true; fi
           }
           trap 'cleanup' EXIT
           START_TS=$(date +%s)
@@ -394,9 +332,6 @@ jobs:
           TIMEOUT=${EMU_BOOT_TIMEOUT_SEC}
           EARLY_TIMEOUT=300
           EARLY_END=$((START_TS + EARLY_TIMEOUT))
-          DMESG_PID=""
-          ( while true; do sudo dmesg -T | tail -n 200 > "$DMESG_LOG" 2>&1 || true; sleep 30; done ) &
-          DMESG_PID=$!
           while [ $(( $(date +%s) - START_TS )) -lt $TIMEOUT ]; do
             adb devices -l > "$LOGDIR/adb_devices.txt" 2>&1 || true
             SERIAL=$(awk '/emulator-/{print $1; exit}' "$LOGDIR/adb_devices.txt" || true)
@@ -408,20 +343,17 @@ jobs:
               fi
             fi
             if ! kill -0 $EMU_PID 2>/dev/null; then
-              sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
               echo "PROCESS_DIED" > "$LOGDIR/boot_error.txt"
+              echo "!!! EMULATOR PROCESS DIED !!!"
               break
             fi
             if [ $(date +%s) -gt $EARLY_END ] && [ -z "$SERIAL" ]; then
-              sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
               echo "NO_SERIAL_AFTER_EARLY_TIMEOUT" > "$LOGDIR/boot_error.txt"
+              echo "!!! EARLY TIMEOUT !!!"
               break
             fi
             sleep 5
           done
-          if [ -n "$DMESG_PID" ] && kill -0 "$DMESG_PID" 2>/dev/null; then
-            kill "$DMESG_PID" 2>/dev/null || true
-          fi
           if [ -z "$FOUND_SERIAL" ]; then
             adb devices -l > "$LOGDIR/adb_devices_final.txt" 2>&1 || true
             if [ ! -f "$LOGDIR/boot_error.txt" ]; then
@@ -444,7 +376,6 @@ jobs:
           done
           if [ $BOOT_OK -ne 1 ]; then
             adb -s "$FOUND_SERIAL" logcat -d > "$LOGDIR/logcat_preboot.txt" || true
-            sudo dmesg -T | egrep -i 'killed process|oom' > "$LOGDIR/dmesg_oom.txt" 2>&1 || true
             echo "EMULATOR_BOOT_TIMEOUT" > "$LOGDIR/boot_error.txt"
             adb -s "$FOUND_SERIAL" emu kill || true
             cleanup
@@ -453,7 +384,7 @@ jobs:
             exit 0
           fi
           adb -s "$FOUND_SERIAL" logcat -c || true
-          if timeout 300s adb -s "$FOUND_SERIAL" install -r "$APK" > "$INSTALL_LOG" 2>&1; then
+          if echo "installing apk" && timeout 300s adb -s "$FOUND_SERIAL" install -r "$APK" > "$INSTALL_LOG" 2>&1; then
             :
           else
             echo "INSTALL_FAILED" > "$LOGDIR/install_error.txt"
@@ -503,7 +434,7 @@ jobs:
         if: always()
         with:
           name: emulator-data
-          path: emulator_logs_/**
+          path: emulator_logs
           if-no-files-found: warn
 
   report:
