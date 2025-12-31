@@ -166,7 +166,7 @@ jobs:
 
   emulator:
     name: emulator
-    runs-on: macos-13
+    runs-on: macos-15-intel
     needs: build
     if: always()
     timeout-minutes: 150
