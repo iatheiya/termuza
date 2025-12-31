@@ -22,6 +22,9 @@ env:
   ANDROID_BUILD_TOOLS_VERSION: '34.0.0'
   MIN_FREE_KB: '10000000'
   GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx3072m -XX:+UseParallelGC"
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+  PATH: /usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/emulator:/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/build-tools/${{ env.ANDROID_BUILD_TOOLS_VERSION }}:$PATH
 
 jobs:
   diagnostics:
@@ -233,9 +236,20 @@ jobs:
         if: env.apk_exists == 'true'
         run: |
           set -euo pipefail
-          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Library/Android/sdk}
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-          yes | sdkmanager --install "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "platforms;android-${API_LEVEL}" || true
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --install "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "platforms;android-${API_LEVEL}" || true
+      - name: verify-aapt
+        if: env.apk_exists == 'true'
+        run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          AAPT2=$(find "$ANDROID_HOME" -type f -path "*/build-tools/*/aapt2" -print -quit || true)
+          AAPT=$(find "$ANDROID_HOME" -type f -path "*/build-tools/*/aapt" -print -quit || true)
+          echo "AAPT2=$AAPT2" > verify_aapt.txt
+          echo "AAPT=$AAPT" >> verify_aapt.txt
+          ls -la "$ANDROID_HOME/build-tools" || true
+          cat verify_aapt.txt || true
       - name: run-emulator-and-install
         if: env.apk_exists == 'true'
         uses: reactivecircus/android-emulator-runner@v2
@@ -249,7 +263,7 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-metrics
           emulator-boot-timeout: ${{ env.EMU_BOOT_TIMEOUT_SEC }}
           script: |
-            set -eux; mkdir -p emulator_logs; adb devices -l > emulator_logs/adb_devices_before.txt || true; adb wait-for-device; timeout 300s adb install -r "$APK_PATH" > emulator_logs/install_log.txt 2>&1 || true; AAPT2=$(command -v aapt2 || true); AAPT=$(command -v aapt || true); PKG=""; MAINACT=""; if [ -n "$AAPT2" ]; then PKG=$($AAPT2 dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/package: name=/{print $2; exit}' || true); MAINACT=$($AAPT2 dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/launchable-activity: name=/{print $2; exit}' || true); elif [ -n "$AAPT" ]; then PKG=$($AAPT dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/package: name=/{print $2; exit}' || true); MAINACT=$($AAPT dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/launchable-activity: name=/{print $2; exit}' || true); fi; echo "PKG=${PKG}" > emulator_logs/pkg.txt; if [ -n "$PKG" ]; then if [ -n "$MAINACT" ]; then adb shell am start -n "${PKG}/${MAINACT}" > emulator_logs/launch_log.txt 2>&1 || true; else adb shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 > emulator_logs/launch_log.txt 2>&1 || true; fi; sleep 5; adb logcat -d > emulator_logs/logcat.txt || true; else echo "PKG_NOT_DETECTED" > emulator_logs/pkg_error.txt; fi
+            set -eux; export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}; export ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME}; export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"; mkdir -p emulator_logs; adb devices -l > emulator_logs/adb_devices_before.txt || true; adb wait-for-device; timeout 300s adb install -r "$APK_PATH" > emulator_logs/install_log.txt 2>&1 || true; AAPT2=$(find "$ANDROID_HOME" -type f -path "*/build-tools/*/aapt2" -print -quit 2>/dev/null || true); if [ -z "$AAPT2" ]; then AAPT2=$(command -v aapt2 || true); fi; AAPT=$(find "$ANDROID_HOME" -type f -path "*/build-tools/*/aapt" -print -quit 2>/dev/null || true); if [ -z "$AAPT" ]; then AAPT=$(command -v aapt || true); fi; PKG=""; MAINACT=""; if [ -n "$AAPT2" ]; then PKG=$("$AAPT2" dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/package: name=/{print $2; exit}' || true); MAINACT=$("$AAPT2" dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/launchable-activity: name=/{print $2; exit}' || true); elif [ -n "$AAPT" ]; then PKG=$("$AAPT" dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/package: name=/{print $2; exit}' || true); MAINACT=$("$AAPT" dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/launchable-activity: name=/{print $2; exit}' || true); fi; echo "AAPT2=${AAPT2}" > emulator_logs/aapt_info.txt; echo "AAPT=${AAPT}" >> emulator_logs/aapt_info.txt; echo "PKG=${PKG}" > emulator_logs/pkg.txt; if [ -n "$PKG" ]; then if [ -n "$MAINACT" ]; then adb shell am start -n "${PKG}/${MAINACT}" > emulator_logs/launch_log.txt 2>&1 || true; else adb shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 > emulator_logs/launch_log.txt 2>&1 || true; fi; sleep 5; adb logcat -d > emulator_logs/logcat.txt || true; else echo "PKG_NOT_DETECTED" > emulator_logs/pkg_error.txt; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
