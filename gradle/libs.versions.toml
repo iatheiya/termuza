@@ -1,0 +1,42 @@
+[versions]
+agp = "8.7.3"
+appcompat = "1.9.1"
+annotation = "1.9.1"
+core = "1.15.0"
+material = "1.12.0"
+guava = "33.4.0-android"
+markwon = "4.6.2"
+hiddenapibypass = "6.1"
+window = "1.3.0"
+commons_io = "2.5"
+desugar = "2.1.5"
+junit = "4.13.2"
+test_ext_junit = "1.1.3"
+espresso = "3.4.0"
+drawerlayout = "1.2.0"
+preference = "1.2.1"
+viewpager = "1.1.0"
+robolectric = "4.13.2"
+
+[libraries]
+com.android.tools.build = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+androidx.appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
+androidx.annotation = { module = "androidx.annotation:annotation", version.ref = "annotation" }
+androidx.core = { module = "androidx.core:core", version.ref = "core" }
+com.google.android.material = { module = "com.google.android.material:material", version.ref = "material" }
+com.google.guava = { module = "com.google.guava:guava", version.ref = "guava" }
+io.noties.markwon.core = { module = "io.noties.markwon:core", version.ref = "markwon" }
+io.noties.markwon.ext-strikethrough = { module = "io.noties.markwon:ext-strikethrough", version.ref = "markwon" }
+io.noties.markwon.linkify = { module = "io.noties.markwon:linkify", version.ref = "markwon" }
+io.noties.markwon.recycler = { module = "io.noties.markwon:recycler", version.ref = "markwon" }
+org.lsposed.hiddenapibypass = { module = "org.lsposed.hiddenapibypass:hiddenapibypass", version.ref = "hiddenapibypass" }
+androidx.window = { module = "androidx.window:window", version.ref = "window" }
+commons.io = { module = "commons-io:commons-io", version.ref = "commons_io" }
+com.android.tools.desugar = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx.test.ext.junit = { module = "androidx.test.ext:junit", version.ref = "test_ext_junit" }
+androidx.test.espresso.core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+androidx.drawerlayout = { module = "androidx.drawerlayout:drawerlayout", version.ref = "drawerlayout" }
+androidx.preference = { module = "androidx.preference:preference", version.ref = "preference" }
+androidx.viewpager = { module = "androidx.viewpager:viewpager", version.ref = "viewpager" }
+org.robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
