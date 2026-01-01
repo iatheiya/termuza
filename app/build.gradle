@@ -22,6 +22,7 @@ android {
     def apkVersionTag = (System.getenv("TERMUX_APK_VERSION_TAG") ?: "") ?: ""
     def splitAPKsForDebugBuilds = (System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1") ?: "1"
     def splitAPKsForReleaseBuilds = (System.getenv("TERMUX_SPLIT_APKS_FOR_RELEASE_BUILDS") ?: "0") ?: "0"
+    // Use the ext property (packageVariant) as the variant value inside the android block
     def variantVal = project.ext.has("packageVariant") ? (project.ext.packageVariant ?: "apt-android-7") : "apt-android-7"
 
     defaultConfig {
@@ -159,6 +160,7 @@ def validateVersionName(String versionName) {
 }
 
 def downloadBootstrap(String arch, String expectedChecksum, String version) {
+    // Strongly robust download helper: absolute path, ensure parent dirs exist, compute SHA-256 while streaming
     def digest = java.security.MessageDigest.getInstance("SHA-256")
     def relativePath = "src/main/cpp/bootstrap-${arch}.zip"
     def file = new File(project.projectDir, relativePath)
@@ -167,12 +169,12 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
     def parent = file.parentFile
     if (parent != null && !parent.exists()) {
         if (!parent.mkdirs()) {
-            // try again (best-effort); if it still fails, we'll attempt to open the stream and fail with clear error
+            // best-effort retry
             parent.mkdirs()
         }
     }
 
-    // If file exists, validate checksum and return if OK
+    // If file exists, validate checksum first
     if (file.exists() && file.length() > 0) {
         file.withInputStream { is ->
             def buffer = new byte[8192]
@@ -196,30 +198,29 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
     connection.setInstanceFollowRedirects(true)
 
     def httpConn = null
-    if (connection instanceof HttpURLConnection) {
-        httpConn = (HttpURLConnection) connection
-        httpConn.setRequestMethod("GET")
-        httpConn.connect()
-        def code = httpConn.getResponseCode()
-        if (code >= 400) {
-            if (httpConn.getErrorStream() != null) {
-                httpConn.getErrorStream().close()
-            }
-            throw new GradleException("Failed to download ${remoteUrl}, HTTP response code: ${code}")
-        }
-    } else {
-        connection.connect()
-    }
-
-    // Open output stream only after parent directory guaranteed to exist
-    if (parent == null || !parent.exists()) {
-        throw new GradleException("Failed to create parent directory for ${file.absolutePath}")
-    }
-
     try {
-        def inputStream = connection.getInputStream()
-        try {
-            def digestStream = new java.security.DigestInputStream(inputStream, digest)
+        if (connection instanceof HttpURLConnection) {
+            httpConn = (HttpURLConnection) connection
+            httpConn.setRequestMethod("GET")
+            httpConn.connect()
+            def code = httpConn.getResponseCode()
+            if (code >= 400) {
+                if (httpConn.getErrorStream() != null) {
+                    httpConn.getErrorStream().close()
+                }
+                throw new GradleException("Failed to download ${remoteUrl}, HTTP response code: ${code}")
+            }
+        } else {
+            connection.connect()
+        }
+
+        // Open output stream only after parent directory guaranteed to exist
+        if (parent == null || !parent.exists()) {
+            throw new GradleException("Failed to create parent directory for ${file.absolutePath}")
+        }
+
+        connection.inputStream.withCloseable { is ->
+            def digestStream = new java.security.DigestInputStream(is, digest)
             new BufferedOutputStream(new FileOutputStream(file)).withCloseable { out ->
                 def buffer = new byte[8192]
                 int readBytes
@@ -228,10 +229,13 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
                 }
                 out.flush()
             }
-        } finally {
-            if (inputStream != null) {
-                inputStream.close()
-            }
+        }
+
+        def checksum = new BigInteger(1, digest.digest()).toString(16)
+        while (checksum.length() < 64) checksum = "0" + checksum
+        if (checksum != expectedChecksum) {
+            if (file.exists()) file.delete()
+            throw new GradleException("Wrong checksum for " + remoteUrl)
         }
     } catch (Exception e) {
         if (file.exists()) {
@@ -242,13 +246,6 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
         if (httpConn != null) {
             httpConn.disconnect()
         }
-    }
-
-    def checksum = new BigInteger(1, digest.digest()).toString(16)
-    while (checksum.length() < 64) checksum = "0" + checksum
-    if (checksum != expectedChecksum) {
-        if (file.exists()) file.delete()
-        throw new GradleException("Wrong checksum for " + remoteUrl)
     }
 }
 
@@ -262,7 +259,9 @@ tasks.named("clean") {
 
 tasks.register("downloadBootstraps") {
     doLast {
-        def packageVariant = variantVal
+        // Derive packageVariant from project.ext to avoid scope issues (MissingPropertyException)
+        def packageVariant = project.ext.has("packageVariant") ? (project.ext.packageVariant ?: "apt-android-7") : "apt-android-7"
+
         if (packageVariant == "apt-android-7") {
             def version = "2022.04.28-r5+${packageVariant}"
             downloadBootstrap("aarch64", "4a51a7eb209fe82efc24d52e3cccc13165f27377290687cb82038cbd8e948430", version)
