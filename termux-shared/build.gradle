@@ -50,7 +50,7 @@ android {
 dependencies {
     api libs.androidx.appcompat
     implementation libs.androidx.annotation
-    implementation libs.androidx.core.ktx
+    api libs.androidx.core.ktx
     implementation libs.com.google.material
     implementation libs.com.google.guava
 
@@ -63,7 +63,7 @@ dependencies {
     implementation libs.androidx.window
     implementation libs.commons.io
 
-    implementation project(":terminal-view")
+    api project(":terminal-view")
     implementation "com.termux:termux-am-library:v2.0.0"
 
     testImplementation libs.junit
