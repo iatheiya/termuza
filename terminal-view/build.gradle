@@ -4,26 +4,22 @@ apply plugin: 'maven-publish'
 android {
     namespace 'com.termux.view'
     compileSdk 35
-
     defaultConfig {
         minSdk 24
         targetSdk 35
-        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
-
     publishing {
         singleVariant('release') {
             withSourcesJar()
         }
     }
-
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
