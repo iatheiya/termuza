@@ -1,24 +1,40 @@
 #!/usr/bin/env bash
 set -e -o pipefail
 
-rm -rf emulator_logs
-mkdir -p emulator_logs
+LOG_DIR="emulator_logs"
+mkdir -p "$LOG_DIR"
 
-command -v adb >/dev/null 2>&1 && adb --version 2>&1 | sed -n '1,20p' > emulator_logs/adb_version.txt || echo "adb_missing" > emulator_logs/adb_version.txt
-command -v aapt2 >/dev/null 2>&1 && aapt2 version 2>&1 | sed -n '1,20p' > emulator_logs/aapt2_version.txt || echo "aapt2_missing" > emulator_logs/aapt2_version.txt
-command -v aapt >/dev/null 2>&1 && aapt dump badging --version 2>&1 | sed -n '1,20p' > emulator_logs/aapt_version.txt || echo "aapt_missing" > emulator_logs/aapt_version.txt
-command -v sdkmanager >/dev/null 2>&1 && sdkmanager --version 2>&1 > emulator_logs/sdkmanager_version.txt || echo "sdkmanager_missing" > emulator_logs/sdkmanager_version.txt
-
-adb devices -l > emulator_logs/adb_devices_before.txt || true
+command -v adb >/dev/null 2>&1 && adb --version 2>&1 | sed -n '1,20p' > "$LOG_DIR/adb_version.txt" || echo "adb_missing" > "$LOG_DIR/adb_version.txt"
+command -v aapt2 >/dev/null 2>&1 && aapt2 version 2>&1 | sed -n '1,20p' > "$LOG_DIR/aapt2_version.txt" || echo "aapt2_missing" > "$LOG_DIR/aapt2_version.txt"
 
 adb wait-for-device
 
-if [ -z "${APK_PATH:-}" ]; then
-  echo "APK_PATH_NOT_SET" > emulator_logs/install_log.txt
-  exit 0
+boot_completed=""
+max_retries=300
+retry_count=0
+
+while [ "$retry_count" -lt "$max_retries" ]; do
+  boot_completed=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+  if [ "$boot_completed" == "1" ]; then
+    break
+  fi
+  sleep 1
+  retry_count=$((retry_count + 1))
+done
+
+if [ "$boot_completed" != "1" ]; then
+  echo "BOOT_TIMEOUT" > "$LOG_DIR/boot_error.txt"
+  exit 1
 fi
 
-timeout 300s adb install -r "$APK_PATH" > emulator_logs/install_log.txt 2>&1 || true
+adb devices -l > "$LOG_DIR/adb_devices_before.txt" || true
+
+if [ -z "${APK_PATH:-}" ]; then
+  echo "APK_PATH_NOT_SET" > "$LOG_DIR/install_log.txt"
+  exit 1
+fi
+
+adb install -r "$APK_PATH" > "$LOG_DIR/install_log.txt" 2>&1 || true
 
 AAPT2="$(command -v aapt2 || true)"
 AAPT="$(command -v aapt || true)"
@@ -33,22 +49,30 @@ elif [ -n "$AAPT" ]; then
   MAINACT="$($AAPT dump badging "$APK_PATH" 2>/dev/null | awk -F"'" '/launchable-activity: name=/{print $2; exit}' || true)"
 fi
 
-echo "PKG=${PKG}" > emulator_logs/pkg.txt
-echo "MAINACT=${MAINACT}" >> emulator_logs/pkg.txt
+echo "PKG=${PKG}" > "$LOG_DIR/pkg.txt"
+echo "MAINACT=${MAINACT}" >> "$LOG_DIR/pkg.txt"
 
 if [ -n "$PKG" ]; then
   if [ -n "$MAINACT" ]; then
-    adb shell am start -n "${PKG}/${MAINACT}" > emulator_logs/launch_log.txt 2>&1 || true
+    adb shell am start -n "${PKG}/${MAINACT}" > "$LOG_DIR/launch_log.txt" 2>&1 || true
   else
-    adb shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 > emulator_logs/launch_log.txt 2>&1 || true
+    adb shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 > "$LOG_DIR/launch_log.txt" 2>&1 || true
   fi
 
-  sleep 5
-  adb logcat -d > emulator_logs/logcat.txt || true
+  for i in {1..30}; do
+    if ! adb shell pidof "$PKG" > /dev/null; then
+      echo "CRASH_DETECTED_AT_SECOND_$i" >> "$LOG_DIR/crash_status.txt"
+      break
+    fi
+    sleep 1
+  done
+
+  adb logcat -d > "$LOG_DIR/logcat.txt" || true
+  adb shell dumpsys activity "${PKG}" > "$LOG_DIR/activity_dump.txt" || true
 else
-  echo "PKG_NOT_DETECTED" > emulator_logs/pkg_error.txt
+  echo "PKG_NOT_DETECTED" > "$LOG_DIR/pkg_error.txt"
 fi
 
-adb devices -l > emulator_logs/adb_devices_after.txt || true
+adb devices -l > "$LOG_DIR/adb_devices_after.txt" || true
 
 exit 0
