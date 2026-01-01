@@ -125,14 +125,23 @@ public class ViewUtils {
         Point point = new Point();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowMetrics metrics = wm.getCurrentWindowMetrics();
-            Rect bounds = metrics.getBounds();
-            return new Point(bounds.width(), bounds.height());
-        } else {
-            Display display = wm.getDefaultDisplay();
-            display.getRealSize(point);
-            return point;
+            if (wm != null) {
+                WindowMetrics metrics = wm.getCurrentWindowMetrics();
+                Rect bounds = metrics.getBounds();
+                return new Point(bounds.width(), bounds.height());
+            }
         }
+
+        if (wm != null) {
+            Display display = wm.getDefaultDisplay();
+            if (activitySize) {
+                display.getSize(point);
+            } else {
+                display.getRealSize(point);
+            }
+        }
+
+        return point;
     }
 
     public static String toRectString(Rect rect) {
