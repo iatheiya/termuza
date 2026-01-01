@@ -57,8 +57,8 @@ tasks.withType(Test) {
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.7.0"
-    testImplementation "junit:junit:4.13.2"
+    implementation libs.androidx.annotation
+    testImplementation libs.junit
 }
 
 afterEvaluate {
