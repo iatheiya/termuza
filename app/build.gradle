@@ -135,8 +135,8 @@ dependencies {
     implementation libs.markwon.linkify
     implementation libs.markwon.recycler
 
-    implementation project(":terminal-view")
-    implementation project(":termux-shared")
+    api project(":terminal-view")
+    api project(":termux-shared")
 
     testImplementation libs.junit
     testImplementation libs.org.robolectric
