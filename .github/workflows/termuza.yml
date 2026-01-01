@@ -245,8 +245,17 @@ jobs:
         if: ${{ env.apk_exists == 'true' }}
         run: |
           set -euo pipefail
-          export ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          ANDROID_HOME=${ANDROID_HOME:-$HOME/Android/Sdk}
+          mkdir -p "$ANDROID_HOME"
+          export ANDROID_HOME
+          # Persist ANDROID_HOME for subsequent steps
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          # Add Android SDK tooldirs to PATH for subsequent steps (persisted)
+          echo "${ANDROID_HOME}/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "${ANDROID_HOME}/tools/bin" >> $GITHUB_PATH
+          echo "${ANDROID_HOME}/platform-tools" >> $GITHUB_PATH
+          echo "${ANDROID_HOME}/emulator" >> $GITHUB_PATH
+          echo "${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS_VERSION}" >> $GITHUB_PATH
           yes | sdkmanager --install "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "platforms;android-${API_LEVEL}" || true
 
       - name: make emulator script executable
