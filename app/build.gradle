@@ -8,7 +8,7 @@ repositories {
 
 android {
     namespace "com.termux"
-    compileSdk 34
+    compileSdk 35
     ndkVersion = (System.getenv("JITPACK_NDK_VERSION") ?: "26.1.10909125") ?: "26.1.10909125"
 
     def appVersionName = (System.getenv("TERMUX_APP_VERSION_NAME") ?: "") ?: ""
@@ -20,7 +20,7 @@ android {
     defaultConfig {
         applicationId "com.termux"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode 118
         versionName appVersionName && appVersionName.trim() ? appVersionName : "0.118.0"
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"${variantVal}\""
