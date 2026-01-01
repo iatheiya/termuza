@@ -1,29 +1,17 @@
 apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
 
+/*
+  Robust handling of Markwon version:
+  - If a root/project property 'markwonVersion' exists, use it.
+  - Otherwise fall back to a known-good published version "4.6.2".
+*/
+def markwonVersion = (project.hasProperty('markwonVersion') ? project.property('markwonVersion') : '4.6.2')
+
 android {
     namespace 'com.termux.shared'
     compileSdk 34
     ndkVersion (System.getenv("JITPACK_NDK_VERSION") ?: "26.1.10909125")
-
-    dependencies {
-        implementation "androidx.appcompat:appcompat:1.6.1"
-        implementation "androidx.annotation:annotation:1.7.0"
-        implementation "androidx.core:core:1.12.0"
-        implementation "com.google.android.material:material:1.11.0"
-        implementation "com.google.guava:guava:31.1-jre"
-        implementation "io.noties.markwon:core:$markwonVersion"
-        implementation "io.noties.markwon:ext-strikethrough:$markwonVersion"
-        implementation "io.noties.markwon:linkify:$markwonVersion"
-        implementation "io.noties.markwon:recycler:$markwonVersion"
-        implementation "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
-
-        implementation "androidx.window:window:1.0.0-alpha09"
-        implementation "commons-io:commons-io:2.5"
-
-        implementation project(":terminal-view")
-        implementation "com.termux:termux-am-library:v2.0.0"
-    }
 
     defaultConfig {
         minSdk 24
@@ -52,7 +40,7 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
-    
+
     externalNativeBuild {
         ndkBuild {
             path file('src/main/cpp/Android.mk')
@@ -67,10 +55,31 @@ android {
 }
 
 dependencies {
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    implementation "androidx.annotation:annotation:1.7.0"
+    implementation "androidx.core:core:1.12.0"
+    implementation "com.google.android.material:material:1.11.0"
+    implementation "com.google.guava:guava:31.1-jre"
+
+    // Use resolved markwonVersion (falls back to 4.6.2)
+    implementation "io.noties.markwon:core:${markwonVersion}"
+    implementation "io.noties.markwon:ext-strikethrough:${markwonVersion}"
+    implementation "io.noties.markwon:linkify:${markwonVersion}"
+    implementation "io.noties.markwon:recycler:${markwonVersion}"
+
+    implementation "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
+    implementation "androidx.window:window:1.0.0-alpha09"
+    implementation "commons-io:commons-io:2.5"
+
+    implementation project(":terminal-view")
+    implementation "com.termux:termux-am-library:v2.0.0"
+
     testImplementation "junit:junit:4.13.2"
     androidTestImplementation "androidx.test.ext:junit:1.1.3"
     androidTestImplementation "androidx.test.espresso:espresso-core:3.4.0"
-    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
+
+    // align coreLibraryDesugaring with app where possible
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }
 
 afterEvaluate {
