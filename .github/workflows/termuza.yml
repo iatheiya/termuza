@@ -75,9 +75,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: diagnostics
     if: always()
-    timeout-minutes: 50
+    timeout-minutes: 60
     outputs:
-      apk_exists: ${{ steps.find_apk.outputs.apk_exists }}
+      apk_exists: ${{ steps.check_apks.outputs.apk_exists }}
     steps:
       - uses: actions/checkout@v4
 
@@ -104,66 +104,40 @@ jobs:
 
       - name: prepare-keystore
         run: |
-          mkdir -p build_out
+          mkdir -p build_out/apk
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
           else
             keytool -genkeypair -v -keystore release.keystore -alias ci_release -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=CI,OU=CI,O=CI,L=CI,ST=CI,C=US"
           fi
 
-      - name: prepare-emulator-logs
-        run: |
-          rm -rf emulator_logs && mkdir -p emulator_logs
-
-      - name: assemble-debug
+      - name: assemble-emulator-apk
         continue-on-error: true
         run: |
-          mkdir -p build_out
-          RUNID=${{ github.run_id }}
-          OUT="build_out/build-${RUNID}-assemble.txt"
-          ./gradlew clean assembleDebug -PciArch=${{ env.ANDROID_ARCH }} --stacktrace 2>&1 | tee "$OUT" || true
+          ./gradlew clean assembleDebug -PciArch=x86_64 --stacktrace
+          find app/build/outputs/apk -name "*.apk" -exec cp {} build_out/apk/termux-debug-x86_64.apk \; || true
 
-      - name: find-and-collect-apks
-        id: find_apk
+      - name: assemble-device-apk
+        continue-on-error: true
         run: |
-          mkdir -p build_out/apk
-          TMP=$(mktemp)
-          find app/build/outputs/apk -type f -name "*.apk" -print0 > "$TMP" 2>/dev/null || true
-          SELECTED=""
-          if [ -s "$TMP" ]; then
-            while IFS= read -r -d '' a; do
-              if unzip -l "$a" 2>/dev/null | grep -q "lib/x86_64/"; then
-                SELECTED="$a"
-                break
-              fi
-            done < "$TMP"
-            if [ -z "$SELECTED" ]; then
-              while IFS= read -r -d '' a; do
-                if unzip -l "$a" 2>/dev/null | grep -q "lib/x86/"; then
-                  SELECTED="$a"
-                  break
-                fi
-              done < "$TMP"
-            fi
-            if [ -z "$SELECTED" ]; then
-              SELECTED=$(tr '\0' '\n' < "$TMP" | head -n1 || true)
-            fi
-          fi
-          rm -f "$TMP" || true
-          if [ -n "$SELECTED" ]; then
-            cp "$SELECTED" build_out/apk/ || true
-            echo "APK_PATH=build_out/apk/$(basename "$SELECTED")" >> $GITHUB_ENV
-            echo "apk_exists=true" >> $GITHUB_ENV
-            echo "apk_exists=true" >> $GITHUB_OUTPUT
+          ./gradlew clean assembleDebug -PciArch=arm64-v8a --stacktrace
+          find app/build/outputs/apk -name "*.apk" -exec cp {} build_out/apk/termux-debug-arm64-v8a.apk \; || true
+
+      - name: check-collected-apks
+        id: check_apks
+        run: |
+          if ls build_out/apk/*.apk 1> /dev/null 2>&1; then
+             echo "apk_exists=true" >> $GITHUB_ENV
+             echo "apk_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "apk_exists=false" >> $GITHUB_ENV
-            echo "apk_exists=false" >> $GITHUB_OUTPUT
+             echo "apk_exists=false" >> $GITHUB_ENV
+             echo "apk_exists=false" >> $GITHUB_OUTPUT
           fi
 
       - name: analyze-artifacts
         run: |
           mkdir -p build_out
-          APK_PATH="$(find build_out/apk -type f -name "*.apk" -print -quit || true)"
+          APK_PATH="$(find build_out/apk -name "*x86_64.apk" -print -quit || true)"
           if [ -n "$APK_PATH" ]; then
             if unzip -l "$APK_PATH" > /dev/null 2>&1; then
               unzip -l "$APK_PATH" | awk '/lib\//{print $4}' > build_out/native_libs_structure.txt || echo "NO_NATIVE_LIBS" > build_out/native_libs_structure.txt
@@ -171,7 +145,7 @@ jobs:
               echo "UNZIP_ERROR" > build_out/native_libs_structure.txt
             fi
           else
-            echo "NO_APK_FOR_ANALYSIS" > build_out/native_libs_structure.txt
+            echo "NO_EMULATOR_APK_FOR_ANALYSIS" > build_out/native_libs_structure.txt
           fi
           MM="$(find app/build -type f -path '*/merged_manifests/*/AndroidManifest.xml' -print -quit || true)"
           if [ -z "$MM" ]; then MM="$(find app/build -type f -name AndroidManifest.xml -print -quit || true)"; fi
@@ -222,6 +196,7 @@ jobs:
           set -euo pipefail
           mkdir -p emulator_work
           found=0
+          
           while IFS= read -r -d '' a; do
             if unzip -l "$a" 2>/dev/null | grep -q "lib/x86_64/"; then
               cp "$a" emulator_work/app.apk || true
@@ -229,30 +204,24 @@ jobs:
               break
             fi
           done < <(find downloaded_build -type f -name "*.apk" -print0 2>/dev/null || true)
+          
           if [ "$found" -eq 0 ]; then
-            while IFS= read -r -d '' a; do
-              if unzip -l "$a" 2>/dev/null | grep -q "lib/x86/"; then
-                cp "$a" emulator_work/app.apk || true
-                found=1
-                break
-              fi
-            done < <(find downloaded_build -type f -name "*.apk" -print0 2>/dev/null || true)
+             while IFS= read -r -d '' a; do
+               if [[ "$a" == *"x86_64"* ]]; then
+                  cp "$a" emulator_work/app.apk || true
+                  found=1
+                  break
+               fi
+             done < <(find downloaded_build -type f -name "*.apk" -print0 2>/dev/null || true)
           fi
-          if [ "$found" -eq 0 ]; then
-            FIRST=$(find downloaded_build -type f -name "*.apk" -print -quit || true)
-            if [ -n "$FIRST" ]; then
-              cp "$FIRST" emulator_work/app.apk || true
-              found=1
-            fi
-          fi
+
           if [ "$found" -eq 1 ]; then
             echo "APK_PATH=emulator_work/app.apk" >> $GITHUB_ENV
             echo "apk_exists=true" >> $GITHUB_ENV
           else
             echo "apk_exists=false" >> $GITHUB_ENV
             mkdir -p emulator_logs
-            echo "APK_NOT_FOUND_IN_BUILD_ARTIFACTS" > emulator_logs/apk_missing.txt
-            echo "No APK found in build-data artifact; failing emulator job to avoid long hangs." >> emulator_logs/apk_missing.txt
+            echo "EMULATOR_APK_NOT_FOUND" > emulator_logs/apk_missing.txt
             exit 1
           fi
 
@@ -302,37 +271,6 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-metrics
           emulator-boot-timeout: ${{ env.EMU_BOOT_TIMEOUT_SEC }}
           script: ./ci/emulator_run.sh
-
-      - name: collect-logcat
-        if: always()
-        run: |
-          set -euo pipefail
-          mkdir -p emulator_logs
-          if ! command -v adb >/dev/null 2>&1; then
-            echo "adb_missing" > emulator_logs/logcat.txt
-            adb --version 2>&1 | sed -n '1,20p' > emulator_logs/adb_version.txt || true
-          else
-            adb --version 2>&1 | sed -n '1,20p' > emulator_logs/adb_version.txt || true
-            MAX_WAIT=60
-            INTERVAL=2
-            elapsed=0
-            device_found=0
-            while [ $elapsed -lt $MAX_WAIT ]; do
-              if adb devices -l | sed 1d | grep -E '\bdevice$' >/dev/null 2>&1; then
-                device_found=1
-                break
-              fi
-              sleep $INTERVAL
-              elapsed=$((elapsed + INTERVAL))
-            done
-            if [ $device_found -eq 1 ]; then
-              adb logcat -d > emulator_logs/logcat.txt 2>&1 || true
-              adb devices -l > emulator_logs/adb_devices_after.txt 2>&1 || true
-            else
-              adb devices -l > emulator_logs/adb_devices_after.txt 2>&1 || true
-              echo "NO_DEVICE_CONNECTED_AFTER_${MAX_WAIT}_SEC" > emulator_logs/logcat.txt
-            fi
-          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
