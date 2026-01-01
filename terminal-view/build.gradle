@@ -3,11 +3,11 @@ apply plugin: 'maven-publish'
 
 android {
     namespace 'com.termux.view'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
 
