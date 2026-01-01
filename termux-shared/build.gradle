@@ -48,6 +48,7 @@ android {
 }
 
 dependencies {
+    // Используем api для ключевых библиотек, чтобы их классы и ресурсы были видны в app модуле
     api libs.androidx.appcompat
     implementation libs.androidx.annotation
     api libs.androidx.core.ktx
