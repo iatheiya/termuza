@@ -1,3 +1,4 @@
+# .github/workflows/termuza.yml
 name: termuza
 
 on:
@@ -134,7 +135,7 @@ jobs:
           rm -f "$TMP" || true
           if [ -n "$SELECTED" ]; then
             cp "$SELECTED" build_out/apk/ || true
-            echo "apk_path=build_out/apk/$(basename "$SELECTED")" >> $GITHUB_OUTPUT
+            echo "APK_PATH=build_out/apk/$(basename "$SELECTED")" >> $GITHUB_ENV
             echo "apk_exists=true" >> $GITHUB_ENV
           else
             echo "apk_exists=false" >> $GITHUB_ENV
@@ -248,6 +249,11 @@ jobs:
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           yes | sdkmanager --install "platform-tools" "build-tools;${ANDROID_BUILD_TOOLS_VERSION}" "platforms;android-${API_LEVEL}" || true
 
+      - name: make emulator script executable
+        if: ${{ env.apk_exists == 'true' }}
+        run: |
+          chmod +x ./ci/emulator_run.sh || true
+
       - name: run-emulator-and-install
         if: ${{ env.apk_exists == 'true' }}
         uses: reactivecircus/android-emulator-runner@v2
@@ -260,8 +266,7 @@ jobs:
           disable-linux-hw-accel: false
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-metrics
           emulator-boot-timeout: ${{ env.EMU_BOOT_TIMEOUT_SEC }}
-          script: >
-            printf '%s' 'IyEvdXNyL2Jpbi9lbnYgYmFzaApzZXQgLWV4byBwaXBlZmFpbApta2RpciAtcCBlbXVsYXRvcl9sb2dzCmFkYiBkZXZpY2VzIC1sID4gZW11bGF0b3JfbG9ncy9hZGJfZGV2aWNlc19iZWZvcmUudHh0IHx8IHRydWUKYWRiIHdhaXQtZm9yLWRldmljZQp0aW1lb3V0IDMwMHMgYWRiIGluc3RhbGwgLXIgIiRBUktfUEFUSCIgPiBlbXVsYXRvcl9sb2dzL2luc3RhbGxfbG9nLnR4dCAyPiYxIHx8IHRydWUKQUFQVDI9JChjb21tYW5kIC12IGFhcHQyIHwgdHJ1ZSkKQUFQVD0kKGNvbW1hbmQgLXYgYWFwdCB8IHRydWUpClBLRz0iIgpNQUlOQUNUPSIiCmlmIFsgLW4gIiRBUFBUMiIgXTsgdGhlbgogICBQS0c9JChAJEFQVDIgZHVtcCBiYWRnaW5nICIkUFJfUEFUSCIgMj4vZGV2L251bGwgfCBhd2sgLUYiJyciICcvcGFja2FnZTogbmFtZT0veyBwcmluZyAkMjsgZXhpdC8nICB8fSB0cnVlKQogICAgTUFJTkFDVD0kKEBBUFQyIGR1bXAgYmFkZ2luZyAiJEFSS19QQVRIIiAyPi9kZXYvbnVsbCB8IGF3ayAtRiInICcvbGF1bmNoYWJsZS1hY3Rpdml0eTogbmFtZT0veyBwcmluZyAkMjsgZXhpdC8nICB8fSB0cnVlKQplbGlmIFsgLW4gIiRBUFBUIiBdOyB0aGVuCiAgICBQS0c9JChAQVBQIGR1bXAgYmFkZ2luZyAiJEFSS19QQVRI IiAyPi9kZXYvbnVsbCB8IGF3ayAtRiInICcvcGFja2FnZTogbmFtZT0veyBwcmluZyAkMjsgZXhpdC8nICB8fSB0cnVlKQplbmZpCgplY2hvICJQS0c9e3BLS0d9IiA+IGVtdWxhdG9yX2xvZ3MvcGtnLnR4dAppZiBbIC1uICIkUEtHIiBdOyB0aGVuCiAgICBpZiBbIC1uICIkTUFJTkFDVCIgXTsgdGhlbgogICAgICBhZGIgc2hlbGwgYW0gc3RhcnQgLW4gIiRQS0cvJE1BSU5BQ1QiID4gZW11bGF0b3JfbG9ncy9sYXVuY2hfbG9nLnR4dCAyPiYxIHx8IHRydWUKICAgICAgZWxzZQogICAgICAgIGFkYiBzaGVsbCBtb25rZXkgLXAgIiRQS0ciIC1jIGFuZHJvaWQuaW50ZW50LmNhdGVnb3J5LkxBVU5DSElIRVIgMSA+IGVtdWxhdG9yX2xvZ3MvbGF1bmNoX2xvZy50eHQgMj4mMSB8fCB0cnVlCiAgICBmaQoKICAgIHNsZWVwIDUKICAgIGFkYiBsb2dnY2F0IC1kID4gZW11bGF0b3JfbG9ncy9sb2djYXQudHh0IHx8IHRydWUKZWxzZQogICAgZWNobyAiUEtHX05PVF9ERVRFQ1RFRCIgPiBlbXVsYXRvcl9sb2dzL3BrZ19lcnJvci50eHQKZmkKZXhpdCAwCg==' | base64 -d > /tmp/ci_emulator_script.sh && chmod +x /tmp/ci_emulator_script.sh && /bin/bash /tmp/ci_emulator_script.sh
+          script: ./ci/emulator_run.sh
 
       - uses: actions/upload-artifact@v4
         if: always()
