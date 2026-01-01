@@ -10,7 +10,7 @@ ext {
 android {
     namespace "com.termux"
     
-    compileSdk 34
+    compileSdk 35
 
     ndkVersion = System.getenv("JITPACK_NDK_VERSION") ?: "26.1.10909125"
 
@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId "com.termux"
         minSdk 24
-        targetSdk 34
+        targetSdk 35
         versionCode 118
         versionName "0.118.0"
 
@@ -89,8 +89,8 @@ android {
 
     compileOptions {
         coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     externalNativeBuild {
@@ -111,8 +111,8 @@ android {
         }
     }
 
-    applicationVariants.all { variant ->
-        variant.outputs.all { output ->
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
             def abi = output.getFilter(com.android.build.OutputFile.ABI)
             output.outputFileName = "termux-app_" + (apkVersionTag ? apkVersionTag : project.ext.packageVariant + "-" + variant.buildType.name) + "_" + (abi ? abi : "universal") + ".apk"
         }
@@ -141,9 +141,9 @@ dependencies {
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.1.5"
 }
 
-task versionName {
+tasks.register('printVersionName') {
     doLast {
-        print android.defaultConfig.versionName
+        println android.defaultConfig.versionName
     }
 }
 
@@ -185,7 +185,7 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
     }
 }
 
-clean {
+tasks.named('clean') {
     doLast {
         def tree = fileTree(new File(projectDir, 'src/main/cpp'))
         tree.include 'bootstrap-*.zip'
@@ -193,7 +193,7 @@ clean {
     }
 }
 
-task downloadBootstraps() {
+tasks.register('downloadBootstraps') {
     doLast {
         def packageVariant = project.ext.packageVariant
         if (packageVariant == "apt-android-7") {
@@ -213,7 +213,7 @@ task downloadBootstraps() {
 }
 
 afterEvaluate {
-    android.applicationVariants.all { variant ->
+    android.applicationVariants.configureEach { variant ->
         def bootstrapTask = tasks.named("downloadBootstraps")
         variant.preBuildProvider.get().dependsOn(bootstrapTask)
         variant.javaCompileProvider.get().dependsOn(bootstrapTask)
