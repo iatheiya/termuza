@@ -31,9 +31,9 @@ android {
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.7.0"
+    implementation libs.androidx.annotation
     api project(":terminal-emulator")
-    testImplementation "junit:junit:4.13.2"
+    testImplementation libs.junit
 }
 
 afterEvaluate {
