@@ -66,12 +66,17 @@ android {
         }
     }
 
+    // ИСПРАВЛЕНИЕ: Отключаем Splits, если мы собираем конкретную архитектуру (ciArch)
+    // Это предотвращает создание нескольких APK, которые перезаписывают друг друга при копировании.
     splits {
         abi {
-            enable(
+            def isCiBuild = project.hasProperty("ciArch")
+            def enableSplits = !isCiBuild && (
                 (gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
                 (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1")
             )
+            
+            enable(enableSplits)
             reset()
             include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"
             universalApk true
@@ -134,7 +139,10 @@ android {
             def variantType = variant.buildType?.name ?: "debug"
             def pkgVar = variantVal?.toString() ?: "default"
             def namePart = tag ? tag : pkgVar + "-" + variantType
-            def abiPart = abi ? abi : "universal"
+            
+            // Если splits отключены, abi будет null, и мы называем файл universal (или по имени архитектуры из фильтра)
+            def abiPart = abi ? abi : (project.hasProperty("ciArch") ? project.ciArch : "universal")
+            
             output.outputFileName = "termux-app_${namePart}_${abiPart}.apk"
         }
     }
