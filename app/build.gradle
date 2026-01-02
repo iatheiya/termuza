@@ -4,7 +4,6 @@ android {
     namespace "com.termux"
     compileSdk 35
     ndkVersion = (System.getenv("JITPACK_NDK_VERSION") ?: "26.1.10909125") ?: "26.1.10909125"
-
     def appVersionName = (System.getenv("TERMUX_APP_VERSION_NAME") ?: "") ?: ""
     def apkVersionTag = (System.getenv("TERMUX_APK_VERSION_TAG") ?: "") ?: ""
     def splitAPKsForDebugBuilds = (System.getenv("TERMUX_SPLIT_APKS_FOR_DEBUG_BUILDS") ?: "1") ?: "1"
@@ -18,7 +17,6 @@ android {
         versionCode 118
         versionName appVersionName && appVersionName.trim() ? appVersionName : "0.118.0"
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"${variantVal}\""
-
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
         manifestPlaceholders.TERMUX_APP_NAME = "Termux"
         manifestPlaceholders.TERMUX_API_APP_NAME = "Termux:API"
@@ -123,18 +121,14 @@ dependencies {
     implementation libs.androidx.window
     implementation libs.com.google.material
     implementation libs.com.google.guava
-
     implementation libs.markwon.core
     implementation libs.markwon.ext.strikethrough
     implementation libs.markwon.linkify
     implementation libs.markwon.recycler
-
     implementation project(":terminal-view")
     implementation project(":termux-shared")
-
     testImplementation libs.junit
     testImplementation libs.org.robolectric
-
     coreLibraryDesugaring libs.com.android.tools.desugar
 }
 
@@ -152,14 +146,12 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
     def digest = java.security.MessageDigest.getInstance("SHA-256")
     def relativePath = "src/main/cpp/bootstrap-${arch}.zip"
     def file = new File(project.projectDir, relativePath)
-
     def parent = file.parentFile
     if (parent != null && !parent.exists()) {
         if (!parent.mkdirs()) {
             parent.mkdirs()
         }
     }
-
     if (file.exists() && file.length() > 0) {
         file.withInputStream { is ->
             def buffer = new byte[8192]
@@ -168,8 +160,7 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
                 digest.update(buffer, 0, readBytes)
             }
         }
-        def checksum = new BigInteger(1, digest.digest()).toString(16)
-        while (checksum.length() < 64) checksum = "0" + checksum
+        def checksum = String.format("%064x", new BigInteger(1, digest.digest()))
         if (checksum == expectedChecksum) {
             return
         } else {
@@ -177,11 +168,9 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
             digest.reset()
         }
     }
-
     def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-${version}/bootstrap-${arch}.zip"
     def connection = new URL(remoteUrl).openConnection()
     connection.setInstanceFollowRedirects(true)
-
     def httpConn = null
     try {
         if (connection instanceof HttpURLConnection) {
@@ -198,11 +187,9 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
         } else {
             connection.connect()
         }
-
         if (parent == null || !parent.exists()) {
             throw new GradleException("Failed to create parent directory for ${file.absolutePath}")
         }
-
         connection.inputStream.withCloseable { is ->
             def digestStream = new java.security.DigestInputStream(is, digest)
             new BufferedOutputStream(new FileOutputStream(file)).withCloseable { out ->
@@ -214,9 +201,7 @@ def downloadBootstrap(String arch, String expectedChecksum, String version) {
                 out.flush()
             }
         }
-
-        def checksum = new BigInteger(1, digest.digest()).toString(16)
-        while (checksum.length() < 64) checksum = "0" + checksum
+        def checksum = String.format("%064x", new BigInteger(1, digest.digest()))
         if (checksum != expectedChecksum) {
             if (file.exists()) file.delete()
             throw new GradleException("Wrong checksum for " + remoteUrl)
@@ -244,7 +229,6 @@ tasks.named("clean") {
 tasks.register("downloadBootstraps") {
     doLast {
         def packageVariant = (System.getenv("TERMUX_PACKAGE_VARIANT") ?: "apt-android-7") ?: "apt-android-7"
-
         if (packageVariant == "apt-android-7") {
             def version = "2022.04.28-r5+${packageVariant}"
             downloadBootstrap("aarch64", "4a51a7eb209fe82efc24d52e3cccc13165f27377290687cb82038cbd8e948430", version)
@@ -261,15 +245,23 @@ tasks.register("downloadBootstraps") {
     }
 }
 
-afterEvaluate {
-    android.applicationVariants.configureEach { variant ->
-        def bootstrapTask = tasks.named("downloadBootstraps")
-        variant.preBuildProvider.get().dependsOn(bootstrapTask)
-        variant.javaCompileProvider.get().dependsOn(bootstrapTask)
-        variant.externalNativeBuildProviders.each { provider ->
-            provider.configure { t ->
-                t.dependsOn(bootstrapTask)
-            }
-        }
+def bootstrapTaskProvider = tasks.named("downloadBootstraps")
+
+tasks.withType(com.android.build.gradle.tasks.ExternalNativeBuildTask).configureEach {
+    dependsOn bootstrapTaskProvider
+}
+
+tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+    dependsOn bootstrapTaskProvider
+}
+
+tasks.matching { it.name == 'preBuild' }.configureEach {
+    dependsOn bootstrapTaskProvider
+}
+
+tasks.whenTaskAdded { task ->
+    def nameLower = task.name.toLowerCase()
+    if (nameLower.contains("externalnativebuild") || nameLower.contains("externalnative")) {
+        task.dependsOn bootstrapTaskProvider
     }
 }
