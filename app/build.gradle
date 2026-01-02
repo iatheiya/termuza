@@ -24,7 +24,6 @@ android {
         versionCode 118
         versionName appVersionName && appVersionName.trim() ? appVersionName : "0.118.0"
         buildConfigField "String", "TERMUX_PACKAGE_VARIANT", "\"${variantVal}\""
-
         manifestPlaceholders.TERMUX_PACKAGE_NAME = "com.termux"
         manifestPlaceholders.TERMUX_APP_NAME = "Termux"
         manifestPlaceholders.TERMUX_API_APP_NAME = "Termux:API"
@@ -52,17 +51,17 @@ android {
                 cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"
             }
         }
+    }
 
-        splits {
-            abi {
-                enable(
-                    (gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
-                    (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1")
-                )
-                reset()
-                include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"
-                universalApk true
-            }
+    splits {
+        abi {
+            enable(
+                (gradle.startParameter.taskNames.any { it.contains("Debug") } && splitAPKsForDebugBuilds == "1") ||
+                (gradle.startParameter.taskNames.any { it.contains("Release") } && splitAPKsForReleaseBuilds == "1")
+            )
+            reset()
+            include "x86", "x86_64", "armeabi-v7a", "arm64-v8a"
+            universalApk true
         }
     }
 
@@ -164,12 +163,8 @@ def validateVersionName(String versionName) {
 
 tasks.named("clean") {
     doLast {
-        def tree = fileTree(new File(projectDir, "src/main/cpp"))
-        tree.include "bootstrap-*.zip"
-        tree.each { it.delete() }
-        def asmTree = fileTree(new File(projectDir, "src/main/cpp"))
-        asmTree.include "termux-bootstrap-zip-*.S"
-        asmTree.each { it.delete() }
+        delete fileTree(dir: new File(projectDir, "src/main/cpp"), include: "bootstrap-*.zip")
+        delete fileTree(dir: new File(projectDir, "src/main/cpp"), include: "termux-bootstrap-zip-*.S")
     }
 }
 
@@ -196,37 +191,33 @@ tasks.register("collectLocalBootstraps") {
             'x86_64': 'x86_64'
         ]
 
-        archMap.each { gradleArch, relName ->
-            def targetZip = new File(projectDirFile, "src/main/cpp/bootstrap-${gradleArch}.zip")
+        archMap.each { gradleArch, termuxArch ->
+            def targetZipName = "bootstrap-${termuxArch}.zip"
+            def targetZip = new File(projectDirFile, "src/main/cpp/${targetZipName}")
+
             if (targetZip.exists() && targetZip.length() > 0) {
-                def asm = new File(projectDirFile, "src/main/cpp/termux-bootstrap-zip-${gradleArch}.S")
-                if (!asm.exists()) {
-                    def asmContent = ".section .rodata\n.global termux_bootstrap_zip_${gradleArch}\n.type termux_bootstrap_zip_${gradleArch}, %object\ntermux_bootstrap_zip_${gradleArch}:\n.incbin \"bootstrap-${gradleArch}.zip\"\n.global termux_bootstrap_zip_${gradleArch}_end\ntermux_bootstrap_zip_${gradleArch}_end:\n.byte 0\n.equ termux_bootstrap_zip_${gradleArch}_size, termux_bootstrap_zip_${gradleArch}_end - termux_bootstrap_zip_${gradleArch}\n"
-                    asm.withWriter('UTF-8') { w -> w << asmContent }
-                }
                 return
             }
+
             boolean found = false
-            possibleDirs.each { dir ->
-                if (!dir.exists()) return
+            for (File dir : possibleDirs) {
+                if (!dir.exists()) continue
                 def candidates = [
-                    new File(dir, "bootstrap-${relName}.zip"),
+                    new File(dir, "bootstrap-${termuxArch}.zip"),
                     new File(dir, "bootstrap-${gradleArch}.zip")
                 ]
-                candidates.each { f ->
+                for (File f : candidates) {
                     if (f.exists() && f.length() > 0) {
                         ant.copy(file: f.absolutePath, tofile: targetZip.absolutePath, overwrite: true)
-                        def asm = new File(projectDirFile, "src/main/cpp/termux-bootstrap-zip-${gradleArch}.S")
-                        def asmContent = ".section .rodata\n.global termux_bootstrap_zip_${gradleArch}\n.type termux_bootstrap_zip_${gradleArch}, %object\ntermux_bootstrap_zip_${gradleArch}:\n.incbin \"bootstrap-${gradleArch}.zip\"\n.global termux_bootstrap_zip_${gradleArch}_end\ntermux_bootstrap_zip_${gradleArch}_end:\n.byte 0\n.equ termux_bootstrap_zip_${gradleArch}_size, termux_bootstrap_zip_${gradleArch}_end - termux_bootstrap_zip_${gradleArch}\n"
-                        asm.withWriter('UTF-8') { w -> w << asmContent }
                         found = true
-                        return
+                        break
                     }
                 }
-                if (found) return
+                if (found) break
             }
+
             if (!found && !(targetZip.exists() && targetZip.length() > 0)) {
-                throw new GradleException("Bootstrap for ${gradleArch} not found in known locations. Generate bootstrap-${relName}.zip or bootstrap-${gradleArch}.zip and place in one of: ${possibleDirs}. To use remote downloads set TERMUX_USE_REMOTE_BOOTSTRAPS=1")
+                throw new GradleException("Bootstrap for ${gradleArch} (mapped to ${termuxArch}) not found. Expected ${targetZipName} in one of: ${possibleDirs}. To use remote downloads set TERMUX_USE_REMOTE_BOOTSTRAPS=1")
             }
         }
     }
