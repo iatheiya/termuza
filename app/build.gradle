@@ -49,7 +49,7 @@ android {
         externalNativeBuild {
             ndkBuild {
                 cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections"
-                arguments "APP_ABI=x86,x86_64,armeabi-v7a,arm64-v8a", "APP_PLATFORM=android-24"
+                arguments "APP_PLATFORM=android-24"
             }
         }
     }
