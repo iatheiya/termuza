@@ -10,7 +10,7 @@ on:
 env:
   TERMUX_SKIP_BOOTSTRAP_DOWNLOAD: '0'
   JAVA_VERSION: '17'
-  API_LEVEL: '30'
+  API_LEVEL: '35'
   ANDROID_TARGET: 'google_apis'
   ANDROID_ARCH: 'x86_64'
   AVD_NAME: 'ci_optimized'
