@@ -55,7 +55,9 @@ android {
 
         externalNativeBuild {
             ndkBuild {
-                cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections", "-I${project.file('src/main/cpp').absolutePath}"
+                cFlags "-std=c11", "-Wall", "-Wextra", "-Werror", "-Os", "-fno-stack-protector", "-Wl,--gc-sections", "-Wl,-z,max-page-size=16384", "-I${project.file('src/main/cpp').absolutePath}"
+                cppFlags "-Wl,-z,max-page-size=16384"
+                arguments "APP_LDFLAGS+=-Wl,-z,max-page-size=16384"
             }
         }
     }
@@ -66,8 +68,6 @@ android {
         }
     }
 
-    // ИСПРАВЛЕНИЕ: Отключаем Splits, если мы собираем конкретную архитектуру (ciArch)
-    // Это предотвращает создание нескольких APK, которые перезаписывают друг друга при копировании.
     splits {
         abi {
             def isCiBuild = project.hasProperty("ciArch")
@@ -94,6 +94,8 @@ android {
             keyAlias "alias"
             storePassword "xrj45yWGLbsO7W0v"
             keyPassword "xrj45yWGLbsO7W0v"
+            v1SigningEnabled true
+            v2SigningEnabled true
         }
     }
 
@@ -130,6 +132,9 @@ android {
         jniLibs {
             useLegacyPackaging true
         }
+        resources {
+            excludes += '/META-INF/{AL2.0,LGPL2.1}'
+        }
     }
 
     applicationVariants.configureEach { variant ->
@@ -139,10 +144,7 @@ android {
             def variantType = variant.buildType?.name ?: "debug"
             def pkgVar = variantVal?.toString() ?: "default"
             def namePart = tag ? tag : pkgVar + "-" + variantType
-            
-            // Если splits отключены, abi будет null, и мы называем файл universal (или по имени архитектуры из фильтра)
             def abiPart = abi ? abi : (project.hasProperty("ciArch") ? project.ciArch : "universal")
-            
             output.outputFileName = "termux-app_${namePart}_${abiPart}.apk"
         }
     }
