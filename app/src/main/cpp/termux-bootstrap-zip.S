@@ -1,6 +1,8 @@
+.section .rodata
 .global blob
-    .global blob_size
-    .section .rodata
+.global blob_size
+.type blob, %object
+.type blob_size, %object
 blob:
 #if defined(__i386__) || defined(__i686__) || defined(i686)
     .incbin "bootstrap-i686.zip"
@@ -14,5 +16,7 @@ blob:
 #error Unsupported arch
 #endif
 1:
+    .size blob, .-blob
 blob_size:
     .int 1b - blob
+    .size blob_size, 4
