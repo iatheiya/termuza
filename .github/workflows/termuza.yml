@@ -201,7 +201,7 @@ jobs:
           set -euo pipefail
           mkdir -p emulator_work
           found=0
-          
+
           while IFS= read -r -d '' a; do
             if unzip -l "$a" 2>/dev/null | grep -q "lib/x86_64/"; then
               cp "$a" emulator_work/app.apk || true
@@ -209,7 +209,7 @@ jobs:
               break
             fi
           done < <(find downloaded_build -type f -name "*.apk" -print0 2>/dev/null || true)
-          
+
           if [ "$found" -eq 0 ]; then
              while IFS= read -r -d '' a; do
                if [[ "$a" == *"x86_64"* ]]; then
@@ -238,10 +238,15 @@ jobs:
       - name: enable-kvm
         if: ${{ env.apk_exists == 'true' }}
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          sudo usermod -aG kvm $USER || true
+          if [ -e /dev/kvm ]; then
+            echo "KVM device found, fixing permissions..."
+            sudo chmod 666 /dev/kvm || true
+            ls -l /dev/kvm || true
+            echo "kvm_enabled=true" >> $GITHUB_ENV
+          else
+            echo "KVM device NOT found. Expect slow performance."
+            echo "kvm_enabled=false" >> $GITHUB_ENV
+          fi
 
       - name: install-build-tools
         if: ${{ env.apk_exists == 'true' }}
@@ -273,7 +278,15 @@ jobs:
           avd-name: ${{ env.AVD_NAME }}
           force-avd-creation: true
           disable-linux-hw-accel: false
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -accel on -no-snapshot-save -no-metrics
+          emulator-options: >
+            -no-window
+            -no-audio
+            -no-boot-anim
+            -gpu swiftshader_indirect
+            -no-snapshot-save
+            -no-metrics
+            -memory 4096
+            -accel on
           emulator-boot-timeout: ${{ env.EMU_BOOT_TIMEOUT_SEC }}
           script: ./ci/emulator_run.sh
 
