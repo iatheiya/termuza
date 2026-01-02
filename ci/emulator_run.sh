@@ -59,6 +59,15 @@ if [ -n "$PKG" ]; then
     adb shell monkey -p "${PKG}" -c android.intent.category.LAUNCHER 1 > "$LOG_DIR/launch_log.txt" 2>&1 || true
   fi
 
+  sleep 10
+  adb shell screencap -p /sdcard/screen_light.png
+  adb pull /sdcard/screen_light.png "$LOG_DIR/screen_light.png" || true
+
+  adb shell settings put secure ui_night_mode 2
+  sleep 5
+  adb shell screencap -p /sdcard/screen_dark.png
+  adb pull /sdcard/screen_dark.png "$LOG_DIR/screen_dark.png" || true
+
   for i in {1..30}; do
     if ! adb shell pidof "$PKG" > /dev/null; then
       echo "CRASH_DETECTED_AT_SECOND_$i" >> "$LOG_DIR/crash_status.txt"
