@@ -139,7 +139,7 @@ dependencies {
     implementation libs.com.google.guava
 
     implementation libs.markwon.core
-    implementation libs.markwon.ext.strikethrough
+    implementation libs.markwon.ext-strikethrough
     implementation libs.markwon.linkify
     implementation libs.markwon.recycler
 
@@ -162,127 +162,84 @@ def validateVersionName(String versionName) {
     return
 }
 
-def downloadBootstrap(String arch, String expectedChecksum, String version) {
-    def digest = java.security.MessageDigest.getInstance("SHA-256")
-    def relativePath = "src/main/cpp/bootstrap-${arch}.zip"
-    def file = new File(project.projectDir, relativePath)
-
-    def parent = file.parentFile
-    if (parent != null && !parent.exists()) {
-        if (!parent.mkdirs()) {
-            parent.mkdirs()
-        }
-    }
-
-    if (file.exists() && file.length() > 0) {
-        file.withInputStream { is ->
-            def buffer = new byte[8192]
-            int readBytes
-            while ((readBytes = is.read(buffer)) != -1) {
-                digest.update(buffer, 0, readBytes)
-            }
-        }
-        def checksum = new BigInteger(1, digest.digest()).toString(16)
-        while (checksum.length() < 64) checksum = "0" + checksum
-        if (checksum == expectedChecksum) {
-            return
-        } else {
-            file.delete()
-            digest.reset()
-        }
-    }
-
-    def remoteUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-${version}/bootstrap-${arch}.zip"
-    def connection = new URL(remoteUrl).openConnection()
-    connection.setInstanceFollowRedirects(true)
-
-    def httpConn = null
-    try {
-        if (connection instanceof HttpURLConnection) {
-            httpConn = (HttpURLConnection) connection
-            httpConn.setRequestMethod("GET")
-            httpConn.connect()
-            def code = httpConn.getResponseCode()
-            if (code >= 400) {
-                if (httpConn.getErrorStream() != null) {
-                    httpConn.getErrorStream().close()
-                }
-                throw new GradleException("Failed to download ${remoteUrl}, HTTP response code: ${code}")
-            }
-        } else {
-            connection.connect()
-        }
-
-        if (parent == null || !parent.exists()) {
-            throw new GradleException("Failed to create parent directory for ${file.absolutePath}")
-        }
-
-        connection.inputStream.withCloseable { is ->
-            def digestStream = new java.security.DigestInputStream(is, digest)
-            new BufferedOutputStream(new FileOutputStream(file)).withCloseable { out ->
-                def buffer = new byte[8192]
-                int readBytes
-                while ((readBytes = digestStream.read(buffer)) != -1) {
-                    out.write(buffer, 0, readBytes)
-                }
-                out.flush()
-            }
-        }
-
-        def checksum = new BigInteger(1, digest.digest()).toString(16)
-        while (checksum.length() < 64) checksum = "0" + checksum
-        if (checksum != expectedChecksum) {
-            if (file.exists()) file.delete()
-            throw new GradleException("Wrong checksum for " + remoteUrl)
-        }
-    } catch (Exception e) {
-        if (file.exists()) {
-            file.delete()
-        }
-        throw new GradleException("Error downloading ${remoteUrl}: " + e.getMessage(), e)
-    } finally {
-        if (httpConn != null) {
-            httpConn.disconnect()
-        }
-    }
-}
-
 tasks.named("clean") {
     doLast {
         def tree = fileTree(new File(projectDir, "src/main/cpp"))
         tree.include "bootstrap-*.zip"
         tree.each { it.delete() }
+        def asmTree = fileTree(new File(projectDir, "src/main/cpp"))
+        asmTree.include "termux-bootstrap-zip-*.S"
+        asmTree.each { it.delete() }
     }
 }
 
-tasks.register("downloadBootstraps") {
+tasks.register("collectLocalBootstraps") {
     doLast {
-        def packageVariant = (System.getenv("TERMUX_PACKAGE_VARIANT") ?: "apt-android-7") ?: "apt-android-7"
+        def useRemote = ((System.getenv("TERMUX_USE_REMOTE_BOOTSTRAPS") ?: "0") == "1")
+        if (useRemote) {
+            println "TERMUX_USE_REMOTE_BOOTSTRAPS=1 -> remote mode enabled"
+            return
+        }
 
-        if (packageVariant == "apt-android-7") {
-            def version = "2022.04.28-r5+${packageVariant}"
-            downloadBootstrap("arm64-v8a", "4a51a7eb209fe82efc24d52e3cccc13165f27377290687cb82038cbd8e948430", version)
-            downloadBootstrap("armeabi-v7a", "6459a786acbae50d4c8a36fa1c3de6a4dd2d482572f6d54f73274709bd627325", version)
-            downloadBootstrap("x86", "919d212b2f19e08600938db4079e794e947365022dbfd50ac342c50fcedcd7be", version)
-            downloadBootstrap("x86_64", "61b02fdc03ea4f5d9da8d8cf018013fdc6659e6da6cbf44e9b24d1c623580b89", version)
-        } else if (packageVariant == "apt-android-5") {
-            def version = "2022.04.28-r6+${packageVariant}"
-            downloadBootstrap("arm64-v8a", "913609d439415c828c5640be1b0561467e539cb1c7080662decaaca2fb4820e7", version)
-            downloadBootstrap("armeabi-v7a", "26bfb45304c946170db69108e5eb6e3641aad751406ce106c80df80cad2eccf8", version)
-            downloadBootstrap("x86", "46dcfeb5eef67ba765498db9fe4c50dc4690805139aa0dd141a9d8ee0693cd27", version)
-            downloadBootstrap("x86_64", "615b590679ee6cd885b7fd2ff9473c845e920f9b422f790bb158c63fe42b8481", version)
+        def projectDirFile = project.projectDir
+        def possibleDirs = [
+            new File(projectDirFile, "src/main/cpp"),
+            new File(projectDirFile, "bootstrap-out"),
+            new File(projectDirFile, "build/bootstrap"),
+            new File(projectDirFile, "../termux-packages/out")
+        ]
+
+        def archMap = [
+            'arm64-v8a': 'aarch64',
+            'armeabi-v7a': 'arm',
+            'x86': 'i686',
+            'x86_64': 'x86_64'
+        ]
+
+        archMap.each { gradleArch, relName ->
+            def targetZip = new File(projectDirFile, "src/main/cpp/bootstrap-${gradleArch}.zip")
+            if (targetZip.exists() && targetZip.length() > 0) {
+                def asm = new File(projectDirFile, "src/main/cpp/termux-bootstrap-zip-${gradleArch}.S")
+                if (!asm.exists()) {
+                    def asmContent = ".section .rodata\n.global termux_bootstrap_zip_${gradleArch}\n.type termux_bootstrap_zip_${gradleArch}, %object\ntermux_bootstrap_zip_${gradleArch}:\n.incbin \"bootstrap-${gradleArch}.zip\"\n.global termux_bootstrap_zip_${gradleArch}_end\ntermux_bootstrap_zip_${gradleArch}_end:\n.byte 0\n.equ termux_bootstrap_zip_${gradleArch}_size, termux_bootstrap_zip_${gradleArch}_end - termux_bootstrap_zip_${gradleArch}\n"
+                    asm.withWriter('UTF-8') { w -> w << asmContent }
+                }
+                return
+            }
+            boolean found = false
+            possibleDirs.each { dir ->
+                if (!dir.exists()) return
+                def candidates = [
+                    new File(dir, "bootstrap-${relName}.zip"),
+                    new File(dir, "bootstrap-${gradleArch}.zip")
+                ]
+                candidates.each { f ->
+                    if (f.exists() && f.length() > 0) {
+                        ant.copy(file: f.absolutePath, tofile: targetZip.absolutePath, overwrite: true)
+                        def asm = new File(projectDirFile, "src/main/cpp/termux-bootstrap-zip-${gradleArch}.S")
+                        def asmContent = ".section .rodata\n.global termux_bootstrap_zip_${gradleArch}\n.type termux_bootstrap_zip_${gradleArch}, %object\ntermux_bootstrap_zip_${gradleArch}:\n.incbin \"bootstrap-${gradleArch}.zip\"\n.global termux_bootstrap_zip_${gradleArch}_end\ntermux_bootstrap_zip_${gradleArch}_end:\n.byte 0\n.equ termux_bootstrap_zip_${gradleArch}_size, termux_bootstrap_zip_${gradleArch}_end - termux_bootstrap_zip_${gradleArch}\n"
+                        asm.withWriter('UTF-8') { w -> w << asmContent }
+                        found = true
+                        return
+                    }
+                }
+                if (found) return
+            }
+            if (!found && !(targetZip.exists() && targetZip.length() > 0)) {
+                throw new GradleException("Bootstrap for ${gradleArch} not found in known locations. Generate bootstrap-${relName}.zip or bootstrap-${gradleArch}.zip and place in one of: ${possibleDirs}. To use remote downloads set TERMUX_USE_REMOTE_BOOTSTRAPS=1")
+            }
         }
     }
 }
 
 afterEvaluate {
     android.applicationVariants.configureEach { variant ->
-        def bootstrapTask = tasks.named("downloadBootstraps")
-        variant.preBuildProvider.get().dependsOn(bootstrapTask)
-        variant.javaCompileProvider.get().dependsOn(bootstrapTask)
+        def collectTask = tasks.named("collectLocalBootstraps")
+        variant.preBuildProvider.get().dependsOn(collectTask)
+        variant.javaCompileProvider.get().dependsOn(collectTask)
         variant.externalNativeBuildProviders.each { provider ->
             provider.configure { t ->
-                t.dependsOn(bootstrapTask)
+                t.dependsOn(collectTask)
             }
         }
     }
