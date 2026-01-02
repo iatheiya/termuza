@@ -332,47 +332,17 @@ final class TermuxInstaller {
 
     public static byte[] loadZipBytes(Context context) {
         try {
-            String[] supported = Build.SUPPORTED_ABIS != null && Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS : new String[] { Build.CPU_ABI, Build.CPU_ABI2 };
-            for (String abi : supported) {
-                if (abi == null) continue;
-                String termuxArch = mapAbiToTermuxArch(abi);
-                if (termuxArch == null) continue;
-                String assetName = "bootstrap-" + termuxArch + ".zip";
-                try (InputStream ins = context.getAssets().open(assetName)) {
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    byte[] buf = new byte[8192];
-                    int r;
-                    while ((r = ins.read(buf)) != -1) baos.write(buf, 0, r);
-                    Logger.logInfo(LOG_TAG, "Loaded bootstrap from assets: " + assetName);
-                    return baos.toByteArray();
-                } catch (Exception ignore) {
-                }
-            }
-        } catch (Exception e) {
-            Logger.logError(LOG_TAG, "Error while trying to load bootstrap from assets: " + e.toString());
-        }
-
-        try {
+            Logger.logInfo(LOG_TAG, "Loading bootstrap zip directly from native library...");
             System.loadLibrary("termux-bootstrap");
-            return getZip();
-        } catch (UnsatisfiedLinkError e) {
-            throw new RuntimeException("Failed to load bootstrap from assets and native library", e);
+            byte[] zip = getZip();
+            if (zip == null || zip.length == 0) {
+                throw new RuntimeException("Native getZip() returned null or empty array");
+            }
+            return zip;
+        } catch (Throwable e) {
+            Logger.logError(LOG_TAG, "Critical failure loading native bootstrap: " + e.getMessage());
+            throw new RuntimeException("Cannot install Termux: native bootstrap library is missing or corrupted", e);
         }
-    }
-
-    private static String mapAbiToTermuxArch(String abi) {
-        if (abi == null) return null;
-        abi = abi.toLowerCase();
-        if (abi.contains("arm64") || abi.contains("aarch64")) return "aarch64";
-        if (abi.contains("armeabi") || abi.equals("arm")) return "arm";
-        if (abi.contains("x86_64") || abi.equals("x86_64")) return "x86_64";
-        if (abi.contains("x86") || abi.equals("i686")) return "i686";
-        return null;
-    }
-
-    public static byte[] loadZipBytes() {
-        System.loadLibrary("termux-bootstrap");
-        return getZip();
     }
 
     public static native byte[] getZip();
