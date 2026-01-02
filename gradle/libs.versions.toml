@@ -16,7 +16,7 @@ espresso = "3.4.0"
 drawerlayout = "1.2.0"
 preference = "1.2.1"
 viewpager = "1.1.0"
-robolectric = "4.13.2"
+robolectric = "4.16"
 termux_am = "2.0.0"
 
 [libraries]
