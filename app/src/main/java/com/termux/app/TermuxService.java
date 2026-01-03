@@ -6,9 +6,7 @@ import android.content.Intent;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
-
 import androidx.annotation.Nullable;
-
 import com.termux.app.event.SystemEventReceiver;
 import com.termux.app.service.ServiceExecutionManager;
 import com.termux.app.service.ServiceNotificationManager;
@@ -31,7 +29,6 @@ import com.termux.shared.termux.shell.TermuxShellUtils;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.shared.termux.terminal.TermuxTerminalSessionClientBase;
 import com.termux.terminal.TerminalSession;
-
 import java.util.List;
 
 public final class TermuxService extends Service implements AppShell.AppShellClient, TermuxSession.TermuxSessionClient {
@@ -56,8 +53,6 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     static {
         System.loadLibrary("termux_loader");
     }
-
-    private native int nativeStartSession(String executablePath, String[] arguments, String[] environment);
 
     @Override
     public void onCreate() {
