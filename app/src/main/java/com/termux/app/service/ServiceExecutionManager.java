@@ -1,10 +1,9 @@
 package com.termux.app.service;
 
 import android.content.Intent;
-
+import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxService;
@@ -27,15 +26,19 @@ import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.terminal.TerminalSession;
-
 import java.util.ArrayList;
 import java.util.List;
 
 public class ServiceExecutionManager {
-
     private static final String LOG_TAG = "ServiceExecutionManager";
     private final TermuxService mService;
     private final TermuxShellManager mShellManager;
+
+    static {
+        System.loadLibrary("termux-bootstrap");
+    }
+
+    public static native int[] nativeStartSession(String cmd, String[] args, String[] env);
 
     public ServiceExecutionManager(TermuxService service, TermuxShellManager shellManager) {
         this.mService = service;
@@ -68,19 +71,19 @@ public class ServiceExecutionManager {
         executionCommand.isFailsafe = intent.getBooleanExtra(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
         executionCommand.sessionAction = intent.getStringExtra(TERMUX_SERVICE.EXTRA_SESSION_ACTION);
         executionCommand.shellName = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_SHELL_NAME, null);
-        executionCommand.shellCreateMode = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_SHELL_CREATE_MODE, null);
-        executionCommand.commandLabel = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_LABEL, "Execution Intent Command");
-        executionCommand.commandDescription = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_DESCRIPTION, null);
-        executionCommand.commandHelp = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_HELP, null);
-        executionCommand.pluginAPIHelp = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_PLUGIN_API_HELP, null);
+        executionCommand.shellCreateMode = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_SHELL_CREATE_MODE, null);
+        executionCommand.commandLabel = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_LABEL, "Execution Intent Command");
+        executionCommand.commandDescription = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_DESCRIPTION, null);
+        executionCommand.commandHelp = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_COMMAND_HELP, null);
+        executionCommand.pluginAPIHelp = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_PLUGIN_API_HELP, null);
         executionCommand.resultConfig.resultPendingIntent = intent.getParcelableExtra(TERMUX_SERVICE.EXTRA_PENDING_INTENT);
-        executionCommand.resultConfig.resultDirectoryPath = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_DIRECTORY, null);
+        executionCommand.resultConfig.resultDirectoryPath = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_DIRECTORY, null);
         if (executionCommand.resultConfig.resultDirectoryPath != null) {
             executionCommand.resultConfig.resultSingleFile = intent.getBooleanExtra(TERMUX_SERVICE.EXTRA_RESULT_SINGLE_FILE, false);
-            executionCommand.resultConfig.resultFileBasename = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_BASENAME, null);
-            executionCommand.resultConfig.resultFileOutputFormat = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_OUTPUT_FORMAT, null);
-            executionCommand.resultConfig.resultFileErrorFormat = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_ERROR_FORMAT, null);
-            executionCommand.resultConfig.resultFilesSuffix = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILES_SUFFIX, null);
+            executionCommand.resultConfig.resultFileBasename = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_BASENAME, null);
+            executionCommand.resultConfig.resultFileOutputFormat = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_OUTPUT_FORMAT, null);
+            executionCommand.resultConfig.resultFileErrorFormat = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_ERROR_FORMAT, null);
+            executionCommand.resultConfig.resultFilesSuffix = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILES_SUFFIX, null);
         }
         if (executionCommand.shellCreateMode == null) executionCommand.shellCreateMode = ShellCreateMode.ALWAYS.getMode();
         mShellManager.mPendingPluginExecutionCommands.add(executionCommand);
