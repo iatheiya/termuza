@@ -308,8 +308,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         return mUIManager.getTermuxTerminalExtraKeys();
     }
 
-    public void setExtraKeysView(ExtraKeysView extraKeysView) {
+        public void setExtraKeysView(ExtraKeysView extraKeysView) {
         mUIManager.setExtraKeysView(extraKeysView);
+    }
+
+    public TermuxActivityUIManager getUIManager() {
+        return mUIManager;
     }
 
     public DrawerLayout getDrawer() {
