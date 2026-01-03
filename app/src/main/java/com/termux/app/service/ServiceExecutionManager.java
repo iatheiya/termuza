@@ -26,16 +26,18 @@ import com.termux.shared.termux.shell.TermuxShellManager;
 import com.termux.shared.termux.shell.command.environment.TermuxShellEnvironment;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
 import com.termux.terminal.TerminalSession;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class ServiceExecutionManager {
+
     private static final String LOG_TAG = "ServiceExecutionManager";
     private final TermuxService mService;
     private final TermuxShellManager mShellManager;
 
     static {
-        System.loadLibrary("termux-bootstrap");
+        System.loadLibrary("termux_loader");
     }
 
     public static native int[] nativeStartSession(String cmd, String[] args, String[] env);
@@ -50,16 +52,19 @@ public class ServiceExecutionManager {
             Logger.logError(LOG_TAG, "Ignoring null intent to actionServiceExecute");
             return;
         }
+
         ExecutionCommand executionCommand = new ExecutionCommand(TermuxShellManager.getNextShellId());
         executionCommand.executableUri = intent.getData();
         executionCommand.isPluginExecutionCommand = true;
         executionCommand.runner = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RUNNER, (intent.getBooleanExtra(TERMUX_SERVICE.EXTRA_BACKGROUND, false) ? Runner.APP_SHELL.getName() : Runner.TERMINAL_SESSION.getName()));
+
         if (Runner.runnerOf(executionCommand.runner) == null) {
             String errmsg = mService.getString(R.string.error_termux_service_invalid_execution_command_runner, executionCommand.runner);
             executionCommand.setStateFailed(Errno.ERRNO_FAILED.getCode(), errmsg);
             TermuxPluginUtils.processPluginExecutionCommandError(mService, LOG_TAG, executionCommand, false);
             return;
         }
+
         if (executionCommand.executableUri != null) {
             Logger.logVerbose(LOG_TAG, "uri: \"" + executionCommand.executableUri + "\", path: \"" + executionCommand.executableUri.getPath() + "\", fragment: \"" + executionCommand.executableUri.getFragment() + "\"");
             executionCommand.executable = UriUtils.getUriFilePathWithFragment(executionCommand.executableUri);
@@ -67,6 +72,7 @@ public class ServiceExecutionManager {
             if (Runner.APP_SHELL.equalsRunner(executionCommand.runner)) executionCommand.stdin = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_STDIN, null);
             executionCommand.backgroundCustomLogLevel = IntentUtils.getIntegerExtraIfSet(intent, TERMUX_SERVICE.EXTRA_BACKGROUND_CUSTOM_LOG_LEVEL, null);
         }
+
         executionCommand.workingDirectory = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_WORKDIR, null);
         executionCommand.isFailsafe = intent.getBooleanExtra(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
         executionCommand.sessionAction = intent.getStringExtra(TERMUX_SERVICE.EXTRA_SESSION_ACTION);
@@ -78,6 +84,7 @@ public class ServiceExecutionManager {
         executionCommand.pluginAPIHelp = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_PLUGIN_API_HELP, null);
         executionCommand.resultConfig.resultPendingIntent = intent.getParcelableExtra(TERMUX_SERVICE.EXTRA_PENDING_INTENT);
         executionCommand.resultConfig.resultDirectoryPath = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_DIRECTORY, null);
+
         if (executionCommand.resultConfig.resultDirectoryPath != null) {
             executionCommand.resultConfig.resultSingleFile = intent.getBooleanExtra(TERMUX_SERVICE.EXTRA_RESULT_SINGLE_FILE, false);
             executionCommand.resultConfig.resultFileBasename = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_BASENAME, null);
@@ -85,8 +92,11 @@ public class ServiceExecutionManager {
             executionCommand.resultConfig.resultFileErrorFormat = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_ERROR_FORMAT, null);
             executionCommand.resultConfig.resultFilesSuffix = IntentUtils.getStringIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILES_SUFFIX, null);
         }
+
         if (executionCommand.shellCreateMode == null) executionCommand.shellCreateMode = ShellCreateMode.ALWAYS.getMode();
+
         mShellManager.mPendingPluginExecutionCommands.add(executionCommand);
+
         if (Runner.APP_SHELL.equalsRunner(executionCommand.runner)) executeTermuxTaskCommand(executionCommand);
         else if (Runner.TERMINAL_SESSION.equalsRunner(executionCommand.runner)) executeTermuxSessionCommand(executionCommand);
         else {
@@ -189,17 +199,20 @@ public class ServiceExecutionManager {
         List<TermuxSession> termuxSessions = new ArrayList<>(mShellManager.mTermuxSessions);
         List<AppShell> termuxTasks = new ArrayList<>(mShellManager.mTermuxTasks);
         List<ExecutionCommand> pendingPluginExecutionCommands = new ArrayList<>(mShellManager.mPendingPluginExecutionCommands);
+
         for (int i = 0; i < termuxSessions.size(); i++) {
             ExecutionCommand executionCommand = termuxSessions.get(i).getExecutionCommand();
             processResult = mService.wantsToStop() || executionCommand.isPluginExecutionCommandWithPendingResult();
             termuxSessions.get(i).killIfExecuting(mService, processResult);
             if (!processResult) mShellManager.mTermuxSessions.remove(termuxSessions.get(i));
         }
+
         for (int i = 0; i < termuxTasks.size(); i++) {
             ExecutionCommand executionCommand = termuxTasks.get(i).getExecutionCommand();
             if (executionCommand.isPluginExecutionCommandWithPendingResult()) termuxTasks.get(i).killIfExecuting(mService, true);
             else mShellManager.mTermuxTasks.remove(termuxTasks.get(i));
         }
+
         for (int i = 0; i < pendingPluginExecutionCommands.size(); i++) {
             ExecutionCommand executionCommand = pendingPluginExecutionCommands.get(i);
             if (!executionCommand.shouldNotProcessResults() && executionCommand.isPluginExecutionCommandWithPendingResult()) {
