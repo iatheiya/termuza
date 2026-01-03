@@ -8,6 +8,7 @@ import androidx.annotation.Nullable;
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.app.TermuxService;
+import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
 import com.termux.shared.data.IntentUtils;
 import com.termux.shared.errors.Errno;
@@ -77,9 +78,9 @@ public class ServiceExecutionManager {
         if (executionCommand.resultConfig.resultDirectoryPath != null) {
             executionCommand.resultConfig.resultSingleFile = intent.getBooleanExtra(TERMUX_SERVICE.EXTRA_RESULT_SINGLE_FILE, false);
             executionCommand.resultConfig.resultFileBasename = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_BASENAME, null);
-            executionCommand.resultConfig.resultFileOutputFormat = IntentUtils.getStringArrayExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_OUTPUT_FORMAT, null);
+            executionCommand.resultConfig.resultFileOutputFormat = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_OUTPUT_FORMAT, null);
             executionCommand.resultConfig.resultFileErrorFormat = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILE_ERROR_FORMAT, null);
-            executionCommand.resultConfig.resultFilesSuffix = IntentUtils.getStringArrayExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILES_SUFFIX, null);
+            executionCommand.resultConfig.resultFilesSuffix = IntentUtils.getStringExtraIfSet(intent, TERMUX_SERVICE.EXTRA_RESULT_FILES_SUFFIX, null);
         }
         if (executionCommand.shellCreateMode == null) executionCommand.shellCreateMode = ShellCreateMode.ALWAYS.getMode();
         mShellManager.mPendingPluginExecutionCommands.add(executionCommand);
@@ -99,7 +100,7 @@ public class ServiceExecutionManager {
         AppShell newTermuxTask = null;
         ShellCreateMode shellCreateMode = processShellCreateMode(executionCommand);
         if (shellCreateMode == null) return;
-        if (ShellCreateMode.NO_SHELL_WITH_NAME.equalsShellCreateMode(shellCreateMode)) {
+        if (ShellCreateMode.NO_SHELL_WITH_NAME == shellCreateMode) {
             newTermuxTask = mService.getTermuxTaskForShellName(executionCommand.shellName);
             if (newTermuxTask != null) Logger.logVerbose(LOG_TAG, "Existing TermuxTask with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else Logger.logVerbose(LOG_TAG, "No existing TermuxTask with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
@@ -140,7 +141,7 @@ public class ServiceExecutionManager {
         TermuxSession newTermuxSession = null;
         ShellCreateMode shellCreateMode = processShellCreateMode(executionCommand);
         if (shellCreateMode == null) return;
-        if (ShellCreateMode.NO_SHELL_WITH_NAME.equalsShellCreateMode(shellCreateMode)) {
+        if (ShellCreateMode.NO_SHELL_WITH_NAME == shellCreateMode) {
             newTermuxSession = mService.getTermuxSessionForShellName(executionCommand.shellName);
             if (newTermuxSession != null) Logger.logVerbose(LOG_TAG, "Existing TermuxSession with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
             else Logger.logVerbose(LOG_TAG, "No existing TermuxSession with \"" + executionCommand.shellName + "\" shell name found for shell create mode \"" + shellCreateMode.getMode() + "\"");
